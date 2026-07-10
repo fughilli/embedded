@@ -1,0 +1,31 @@
+# cxx bridge demo (safe C++ <-> Rust via the cxx crate / cxx.rs BCR module).
+# Host-targeted: cxx depends on std, so this is not for no_std firmware — use
+# bindgen (C->Rust) / cbindgen (Rust->C) for the embedded C-ABI path.
+load("@rules_rust//rust:defs.bzl", "rust_static_library")
+load("@cxx.rs//tools/bazel:rust_cxx_bridge.bzl", "rust_cxx_bridge")
+
+package(default_visibility = ["//visibility:public"])
+
+# The Rust side: the #[cxx::bridge] proc-macro emits the extern-"C" shims here.
+rust_static_library(
+    name = "demo_rs",
+    srcs = ["src/lib.rs"],
+    edition = "2021",
+    deps = ["@cxx.rs//:cxx"],
+)
+
+# The C++ side glue (.cc/.h) generated from the same bridge module by cxxbridge.
+rust_cxx_bridge(
+    name = "bridge",
+    src = "src/lib.rs",
+    deps = ["@cxx.rs//:core"],  # provides rust/cxx.h
+)
+
+cc_test(
+    name = "cxx_test",
+    srcs = ["test.cc"],
+    deps = [
+        ":bridge",
+        ":demo_rs",  # brings the cxx C++ runtime transitively via @cxx.rs//:cxx
+    ],
+)

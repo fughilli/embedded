@@ -1,6 +1,7 @@
 # RP2350 blink firmware: cc_binary (.elf) -> embedded_binary (retarget to the
 # board via transition) -> genrule (picotool: .elf -> .uf2).
 load("//rules:embedded.bzl", "embedded_binary")
+load("//rules:flash.bzl", "picotool_flash")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -12,6 +13,7 @@ cc_binary(
     deps = [
         "//libs/board",
         "//rust/blink_timing",
+        "//rust/blink_timing:header",
         "@arduino_pico//:core",
     ],
 )
@@ -34,4 +36,10 @@ genrule(
         "@picotool//:bin",
         "@picotool//:all",  # runtime libs picotool may dlopen
     ],
+)
+
+# `bazel run //apps/blink_rp2350:flash` — load the UF2 to a board in BOOTSEL mode.
+picotool_flash(
+    name = "flash",
+    uf2 = ":blink_uf2",
 )

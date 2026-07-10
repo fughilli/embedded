@@ -5,9 +5,8 @@
 #include <Arduino.h>
 
 #include "libs/board/board.h"
-
-// Provided by the Rust static library (C ABI).
-extern "C" uint32_t blink_interval_ms(void);
+// cbindgen-generated from //rust/blink_timing (Rust -> C header).
+#include "rust/blink_timing/blink_timing.h"
 
 void setup() {
   board_setup();

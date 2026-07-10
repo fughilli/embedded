@@ -1,0 +1,19 @@
+# A rust_bindgen toolchain backed by Nix-provided prebuilt clang/libclang +
+# bindgen, so we DON'T compile LLVM from source (which the default
+# @rules_rust_bindgen//:default_bindgen_toolchain does).
+load("@rules_rust_bindgen//:defs.bzl", "rust_bindgen_toolchain")
+
+package(default_visibility = ["//visibility:public"])
+
+rust_bindgen_toolchain(
+    name = "nix_bindgen_toolchain_impl",
+    bindgen = "@bindgen_tool//:bin",
+    clang = "@clang_tool//:bin",
+    libclang = "@libclang//:libclang",
+)
+
+toolchain(
+    name = "bindgen_toolchain",
+    toolchain = ":nix_bindgen_toolchain_impl",
+    toolchain_type = "@rules_rust_bindgen//:toolchain_type",
+)

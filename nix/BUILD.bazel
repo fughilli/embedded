@@ -16,4 +16,9 @@ exports_files([
     "arduino_esp32_drv.nix",
     "esp_riscv_gcc.nix",
     "esp32_arduino_libs.nix",
+    # interop tooling
+    "cbindgen.BUILD",
+    "bindgen_tool.BUILD",
+    "clang.BUILD",
+    "libclang.BUILD",
 ])

@@ -28,6 +28,13 @@ filegroup(name = "ld_flags", srcs = ["sdk/esp32c6/flags/ld_flags"])
 filegroup(name = "ld_scripts", srcs = ["sdk/esp32c6/flags/ld_scripts"])
 filegroup(name = "ld_libs", srcs = ["sdk/esp32c6/flags/ld_libs"])
 
+# Prebuilt pieces needed to assemble a bootable flash image (see esptool_flash).
+filegroup(name = "bootloader_elf", srcs = ["sdk/esp32c6/bin/bootloader_qio_80m.elf"])
+
+filegroup(name = "partitions_default", srcs = ["tools/partitions/default.bin"])
+
+filegroup(name = "boot_app0", srcs = ["tools/partitions/boot_app0.bin"])
+
 # Header + include-path + define carrier (propagates to dependents incl. the app).
 cc_library(
     name = "sdk_hdrs",

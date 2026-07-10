@@ -22,6 +22,14 @@ bazel_dep(name = "bazel_skylib", version = "1.9.0")
 bazel_dep(name = "rules_pkg", version = "1.2.0")
 bazel_dep(name = "rules_rust", version = "0.71.3")
 
+# Rust <-> C/C++ interop:
+#  - rules_rust_bindgen: generate Rust FFI from C headers (C -> Rust)
+#  - cxx.rs: the cxx crate's Bazel rules for safe C++ <-> Rust bridges
+# (cbindgen, Rust -> C headers, is a custom rule in //rules:cbindgen.bzl using
+#  the Nix `cbindgen` binary.)
+bazel_dep(name = "rules_rust_bindgen", version = "0.71.3")
+bazel_dep(name = "cxx.rs", version = "1.0.190")  # 1.0.197+ requires Bazel >=8.0
+
 # rules_nixpkgs: only the *core* module is on the BCR. We do NOT use
 # rules_nixpkgs_cc — we hand-write our bare-metal cc_toolchains (§toolchains/cc)
 # and only borrow the compiler *binaries* + Arduino sources from Nix.
@@ -74,6 +82,20 @@ nix_pkg.file(
     build_file = "//nix:arduino_pico.BUILD",
 )
 
+# cbindgen (Rust -> C/C++ headers) — used by //rules:cbindgen.bzl.
+nix_pkg.attr(
+    name = "cbindgen",
+    attr = "rust-cbindgen",
+    repo = "@nixpkgs",
+    build_file = "//nix:cbindgen.BUILD",
+)
+
+# bindgen toolchain deps (prebuilt from Nix — avoids compiling LLVM from source
+# like rules_rust_bindgen's default toolchain does). See //toolchains/bindgen.
+nix_pkg.attr(name = "bindgen_tool", attr = "rust-bindgen", repo = "@nixpkgs", build_file = "//nix:bindgen_tool.BUILD")
+nix_pkg.attr(name = "clang_tool", attr = "clang", repo = "@nixpkgs", build_file = "//nix:clang.BUILD")
+nix_pkg.attr(name = "libclang", attr = "llvmPackages.libclang.lib", repo = "@nixpkgs", build_file = "//nix:libclang.BUILD")
+
 # --- ESP32-C6 (Milestone 2) ------------------------------------------------
 # esptool — elf -> flashable .bin.
 nix_pkg.attr(
@@ -113,7 +135,19 @@ nix_pkg.file(
     build_file = "//nix:arduino_esp32.BUILD",
 )
 
-use_repo(nix_pkg, "arm_gcc", "picotool", "arduino_pico", "esptool", "riscv_gcc", "arduino_esp32")
+use_repo(
+    nix_pkg,
+    "arm_gcc",
+    "picotool",
+    "arduino_pico",
+    "cbindgen",
+    "bindgen_tool",
+    "clang_tool",
+    "libclang",
+    "esptool",
+    "riscv_gcc",
+    "arduino_esp32",
+)
 
 # ---------------------------------------------------------------------------
 # Rust: bare-metal target triples for both boards. rules_rust fetches prebuilt
@@ -137,6 +171,9 @@ use_repo(rust, "rust_toolchains")
 
 register_toolchains(
     "@rust_toolchains//:all",
+    # bindgen toolchain backed by Nix prebuilt clang/libclang (the default
+    # rules_rust_bindgen toolchain compiles LLVM from source — too heavy).
+    "//toolchains/bindgen:bindgen_toolchain",
     "//toolchains/cc/rp2350_arm:cc_toolchain",
     "//toolchains/cc/esp32c6:cc_toolchain",
 )

@@ -3,6 +3,7 @@
 # Rust triple (thumbv8m.main-none-eabihf on RP2350) via toolchain resolution
 # against the target platform.
 load("@rules_rust//rust:defs.bzl", "rust_static_library")
+load("//rules:cbindgen.bzl", "rust_cbindgen")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -12,4 +13,20 @@ rust_static_library(
     edition = "2021",
     # Bare-metal no_std: abort on panic so we don't need eh_personality.
     rustc_flags = ["-Cpanic=abort"],
+)
+
+# Generate a C header for the crate's `extern "C"` API (Rust -> C). The blink
+# apps include this instead of hand-writing the `blink_interval_ms` declaration.
+rust_cbindgen(
+    name = "blink_timing_h",
+    srcs = ["src/lib.rs"],
+    out = "blink_timing.h",
+    lang = "c",
+    config = "cbindgen.toml",  # cpp_compat = true -> extern "C" guards
+)
+
+cc_library(
+    name = "header",
+    hdrs = [":blink_timing_h"],
+    # Included as "rust/blink_timing/blink_timing.h" (repo-root -iquote).
 )

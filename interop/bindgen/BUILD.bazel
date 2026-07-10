@@ -1,0 +1,27 @@
+# bindgen demo: generate Rust FFI bindings from a C header (C -> Rust).
+# Built for the host (default rust + cc toolchains) — bindgen a firmware/SDK
+# header the same way, adding the target's -I/-D via `clang_flags`.
+load("@rules_rust//rust:defs.bzl", "rust_test")
+load("@rules_rust_bindgen//:defs.bzl", "rust_bindgen_library")
+
+package(default_visibility = ["//visibility:public"])
+
+cc_library(
+    name = "c_math",
+    srcs = ["c_math.c"],
+    hdrs = ["c_math.h"],
+)
+
+# Generates a rust_library `c_math_rs` with `unsafe extern "C"` bindings.
+rust_bindgen_library(
+    name = "c_math_rs",
+    cc_lib = ":c_math",
+    header = "c_math.h",
+)
+
+rust_test(
+    name = "c_math_test",
+    srcs = ["test.rs"],
+    edition = "2021",
+    deps = [":c_math_rs"],
+)

@@ -39,6 +39,32 @@ bazel build //:blink_rp2350                    # blink.uf2  (alias)
 bazel build //apps/blink_esp32c6:blink_bin     # blink.bin
 ```
 
+## Flashing a connected board
+
+```sh
+bazel run //apps/blink_rp2350:flash              # picotool load -x (board in BOOTSEL)
+bazel run //apps/blink_esp32c6:flash             # esptool write-flash (bootloader+parts+app)
+bazel run //apps/blink_esp32c6:flash -- --port /dev/ttyACM0   # extra args pass through
+```
+
+Each `flash` target builds the firmware, then execs the Nix-provided tool over
+the artifacts (rules in `rules/flash.bzl`).
+
+## Rust ↔ C/C++ interop
+
+Three mechanisms, demoed under `interop/`:
+
+- **bindgen** (C headers → Rust FFI) — `rust_bindgen_library` from
+  `rules_rust_bindgen`, with a Nix libclang toolchain (`//toolchains/bindgen`,
+  so we don't compile LLVM from source). See `interop/bindgen`.
+- **cbindgen** (Rust → C/C++ header) — `rust_cbindgen` (`rules/cbindgen.bzl`,
+  Nix `cbindgen`). Used for real: the blink apps `#include` the generated
+  `rust/blink_timing/blink_timing.h` instead of a hand-written `extern "C"`.
+- **cxx** (safe C++ ↔ Rust) — the `cxx.rs` BCR module's `rust_cxx_bridge`. See
+  `interop/cxx` (host-only: `cxx` uses `std`, so not for `no_std` firmware).
+
+`bazel test //interop/...` exercises them.
+
 Verify (no hardware): `picotool info blink.uf2` / `esptool image-info blink.bin`;
 `*-size`/`nm` on the ELF (the Rust `blink_interval_ms` symbol should resolve).
 

@@ -1,11 +1,7 @@
-# ESP32-C6 blink firmware: cc_binary (.elf) -> embedded_binary (retarget to the
-# board via transition) -> genrule (esptool: .elf -> .bin).
-#
-# DRAFT (Milestone 2, not yet built). Depends on @arduino_esp32//:core (BUILD to
-# be written in nix/arduino_esp32.BUILD) and the esp32c6 toolchain + @esptool
-# repo being wired in MODULE.bazel. flash flags below are placeholders — confirm
-# from boards.txt (esp32c6.build.flash_mode/flash_freq/flash_size).
+# ESP32-C6 blink firmware: cc_binary (.elf) -> embedded_binary (transition to
+# the board) -> genrule (esptool: .elf -> app .bin) -> flash (esptool write-flash).
 load("//rules:embedded.bzl", "embedded_binary")
+load("//rules:flash.bzl", "esptool_flash")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -15,6 +11,7 @@ cc_binary(
     deps = [
         "//libs/board",
         "//rust/blink_timing",
+        "//rust/blink_timing:header",
         "@arduino_esp32//:core",
     ],
 )
@@ -25,7 +22,7 @@ embedded_binary(
     platform = "//platforms:esp32c6",
 )
 
-# elf -> flashable .bin. esptool comes from Nix (@esptool).
+# elf -> flashable app .bin (recipe.objcopy.bin). esptool comes from Nix.
 genrule(
     name = "blink_bin",
     srcs = [":blink"],
@@ -37,4 +34,26 @@ genrule(
         "@esptool//:bin",
         "@esptool//:all",
     ],
+)
+
+# The SDK ships the bootloader as an ELF; convert to a flashable .bin.
+genrule(
+    name = "bootloader_bin",
+    srcs = ["@arduino_esp32//:bootloader_elf"],
+    outs = ["bootloader.bin"],
+    cmd = ("$(execpath @esptool//:bin) --chip esp32c6 elf2image " +
+           "--flash_mode qio --flash_freq 80m --flash_size 4MB " +
+           "-o $@ $(location @arduino_esp32//:bootloader_elf)"),
+    tools = ["@esptool//:bin", "@esptool//:all"],
+)
+
+# `bazel run //apps/blink_esp32c6:flash [-- --port /dev/ttyACM0]`
+# Writes a full bootable image (bootloader + partitions + boot_app0 + app).
+esptool_flash(
+    name = "flash",
+    chip = "esp32c6",
+    app = ":blink_bin",
+    bootloader = ":bootloader_bin",
+    partitions = "@arduino_esp32//:partitions_default",
+    boot_app0 = "@arduino_esp32//:boot_app0",
 )

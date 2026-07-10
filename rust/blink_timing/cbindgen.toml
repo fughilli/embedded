@@ -1,0 +1,6 @@
+# cbindgen config for the blink_timing C header.
+language = "C"
+# Wrap declarations in `#ifdef __cplusplus extern "C" { ... }` so C++ callers
+# (the blink apps) link against the Rust `#[no_mangle]` C symbols instead of
+# mangling them.
+cpp_compat = true
