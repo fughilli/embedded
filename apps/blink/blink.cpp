@@ -1,7 +1,7 @@
-// ESP32-C6 blink. The arduino-esp32 core provides app_main()/main() ->
-// setup()/loop(). LED control is board-selected (//libs/board) and the blink
-// interval is computed in Rust (//rust/blink_timing) — same C/C++/Rust link as
-// the RP2350 app, retargeted to the RISC-V core by the embedded_binary transition.
+// Shared blink firmware for both boards. The Arduino core provides the entry
+// point (main/app_main) which calls setup()/loop(). The board-specific core and
+// LED control are chosen by select() (see BUILD.bazel and //libs/board); the
+// blink interval is computed in Rust (//rust/blink_timing).
 #include <Arduino.h>
 
 #include "libs/board/board.h"

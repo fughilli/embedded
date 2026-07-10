@@ -3,5 +3,10 @@ package(default_visibility = ["//visibility:public"])
 
 alias(
     name = "blink_rp2350",
-    actual = "//apps/blink_rp2350:blink_uf2",
+    actual = "//apps/blink:rp2350_uf2",
+)
+
+alias(
+    name = "blink_esp32c6",
+    actual = "//apps/blink:esp32c6_bin",
 )

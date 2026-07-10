@@ -23,7 +23,7 @@ See `WORKLOG.md` for the build/verify commands and the integration notes.
 | `rules/arduino_library.bzl` | Repo rule: fetch a library `.zip`, code-generate its BUILD |
 | `libs/board/` | Board-support lib, implementation chosen by `select()` |
 | `rust/blink_timing/` | no_std `rust_static_library` linked into the blink |
-| `apps/blink_rp2350/` | The RP2350 blink firmware (`.elf` → `.uf2`) |
+| `apps/blink/` | One blink firmware for both boards (board chosen by `select()`) |
 
 ## Building (after the Nix overlay is in place)
 
@@ -32,19 +32,19 @@ See `WORKLOG.md` for the build/verify commands and the integration notes.
 nix build .#arduino-pico
 
 # RP2350 (Arm): ELF then flashable UF2
-bazel build //apps/blink_rp2350:blink         # blink.elf
+bazel build //apps/blink:rp2350               # blink.elf
 bazel build //:blink_rp2350                    # blink.uf2  (alias)
 
 # ESP32-C6 (RISC-V): ELF then flashable BIN
-bazel build //apps/blink_esp32c6:blink_bin     # blink.bin
+bazel build //:blink_esp32c6                   # blink.bin  (alias)
 ```
 
 ## Flashing a connected board
 
 ```sh
-bazel run //apps/blink_rp2350:flash              # picotool load -x (board in BOOTSEL)
-bazel run //apps/blink_esp32c6:flash             # esptool write-flash (bootloader+parts+app)
-bazel run //apps/blink_esp32c6:flash -- --port /dev/ttyACM0   # extra args pass through
+bazel run //apps/blink:flash_rp2350              # picotool load -x (board in BOOTSEL)
+bazel run //apps/blink:flash_esp32c6             # esptool write-flash (bootloader+parts+app)
+bazel run //apps/blink:flash_esp32c6 -- --port /dev/ttyACM0   # extra args pass through
 ```
 
 Each `flash` target builds the firmware, then execs the Nix-provided tool over
@@ -74,7 +74,7 @@ required — "done" is a valid `.elf`/`.uf2`, inspected with `arm-none-eabi-size
 
 ## Design notes
 
-- **`embedded_binary` + transition.** `apps/blink_rp2350:blink` sets
+- **`embedded_binary` + transition.** `apps/blink:rp2350` sets
   `//command_line_option:platforms` to `//platforms:rp2350` via an outgoing
   transition, so one `bazel build` retargets the whole subgraph — the cc/Rust
   toolchains resolve to the board and `select()`s pick the board's support code.
