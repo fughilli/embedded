@@ -98,3 +98,108 @@ required — "done" is a valid `.elf`/`.uf2`, inspected with `arm-none-eabi-size
 - **`firmware_binary` macro** (`rules/firmware.bzl`) turns one board-agnostic
   source into all per-board targets (ELF, `.uf2`/`.bin`, `flash_*`) — see
   `apps/blink` and `apps/rainbow`.
+
+## Using this repo as a Bazel module
+
+This repo is a bzlmod module named **`firmware`** (`module(name = "firmware")`).
+It is not published to the Bazel Central Registry, so add it with an override:
+
+```starlark
+# consumer MODULE.bazel
+bazel_dep(name = "firmware", version = "0.0.0")
+git_override(
+    module_name = "firmware",
+    remote = "https://github.com/<you>/firmware.git",
+    commit = "<sha>",
+)
+# or: archive_override(module_name="firmware", urls=[...], strip_prefix="...")
+# or: local_path_override(module_name="firmware", path="../firmware")
+```
+
+**Prerequisite — Nix on the builder.** The cross toolchains, Arduino cores, and
+`picotool`/`esptool` all come from Nix via `rules_nixpkgs`. Reuse this repo's
+container overlay (`.claude-container-overlay/Dockerfile`) or install the
+Determinate nix-installer; then `bazel build` pulls everything hermetically. The
+host still needs only Bazelisk + Nix.
+
+Depending on `firmware` gives you graph-wide, with no extra wiring:
+
+- the registered **cc toolchains** (arm-none-eabi / riscv32-esp-elf), the
+  **Rust** bare-metal toolchains, and the **bindgen** toolchain;
+- the board **platforms** `@firmware//platforms:rp2350` and `:esp32c6` (plus the
+  `:is_rp2350` / `:is_esp32c6` `config_setting`s).
+
+You can also just build this repo's own targets from your workspace, e.g.
+`bazel build @firmware//:rainbow_esp32c6`.
+
+### Build your own firmware app
+
+Depend on the `@firmware//` **wrapper targets** (they pull in the board-private
+Nix repos for you) and retarget with `embedded_binary`:
+
+```starlark
+# consumer BUILD.bazel
+load("@firmware//rules:embedded.bzl", "embedded_binary")
+
+cc_binary(
+    name = "app_elf",
+    srcs = ["app.cpp"],  # #include <Arduino.h>
+    target_compatible_with = select({
+        "@firmware//platforms:is_rp2350": [],
+        "@firmware//platforms:is_esp32c6": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    deps = [
+        "@firmware//libs/board:arduino_core",  # the board's Arduino core (provides main())
+        # "@firmware//libs/pins",              # LED_DATA_PIN + NUM_LEDS, if useful
+    ],
+)
+
+embedded_binary(name = "app_rp2350", binary = ":app_elf", platform = "@firmware//platforms:rp2350")
+embedded_binary(name = "app_esp32c6", binary = ":app_elf", platform = "@firmware//platforms:esp32c6")
+```
+
+`bazel build //:app_rp2350` produces the retargeted `.elf`; convert/flash it with
+picotool/esptool (see `apps/blink` for the genrules, or the flash rules below).
+
+> **Why the wrappers?** `@arduino_pico`, `@arduino_esp32`, `@picotool`, `@fastled`,
+> etc. are created by `firmware`'s module extensions and are **private to the
+> `firmware` module** — bzlmod does not expose a module's extension repos to its
+> consumers. Depend on the `@firmware//…` targets that wrap them
+> (`//libs/board:arduino_core`, `//libs/pins`, `//apps/...`), whose internal deps
+> resolve in `firmware`'s own repo mapping.
+
+### Reuse the individual rules
+
+All loadable from `@firmware//`:
+
+| Load | Provides |
+| --- | --- |
+| `@firmware//rules:embedded.bzl` | `embedded_binary` (platform-transition wrapper) |
+| `@firmware//rules:flash.bzl` | `esptool_flash` / `picotool_flash` (tool defaults from firmware's Nix repos) |
+| `@firmware//rules:cbindgen.bzl` | `rust_cbindgen` (Rust → C headers; uses firmware's Nix `cbindgen`) |
+| `@firmware//toolchains/cc:cc_toolchain_config.bzl` | the reusable GCC-cross `cc_toolchain_config` |
+
+And the **`arduino`** module extension adds your own Arduino library from a
+`.zip`, in your MODULE.bazel:
+
+```starlark
+arduino = use_extension("@firmware//rules:extensions.bzl", "arduino")
+arduino.library(
+    name = "my_lib",
+    urls = ["https://.../my_lib-1.0.zip"],
+    sha256 = "...",
+    strip_prefix = "my_lib-1.0",
+    deps = ["@firmware//libs/board:arduino_core"],
+)
+use_repo(arduino, "my_lib")
+```
+
+### Caveat: the `firmware_binary` macro is in-repo only
+
+`@firmware//rules:firmware.bzl`'s `firmware_binary` references firmware-internal
+repos with **caller-relative** labels (`//platforms:…` and `$(execpath
+@picotool//…)` in a genrule `cmd`), which resolve against the *consuming* repo's
+mapping — so it works inside this repo but not from a dependent. From a consumer,
+compose the pieces above (`cc_binary` + `embedded_binary` + the flash rules), or
+copy the macro and repo-qualify its labels.
