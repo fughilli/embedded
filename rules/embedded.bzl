@@ -44,8 +44,5 @@ embedded_binary = rule(
             mandatory = True,
             doc = "The //platforms:* target to build `binary` for.",
         ),
-        "_allowlist_function_transitions": attr.label(
-            default = "@bazel_tools//tools/allowlists/function_transition_allowlist",
-        ),
     },
 )

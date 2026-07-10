@@ -4,6 +4,43 @@ Session handoff for a fresh agent with no memory of prior sessions. Read this
 first, then `git log`. The plan lives at (approved) — this file supersedes it
 with current state.
 
+## ✅ Milestone 1 COMPLETE (2026-07-10, session 2)
+
+`bazel build //:blink_rp2350` produces a valid RP2350 firmware:
+- `bazel-bin/apps/blink_rp2350/blink.elf` — ARM ELF32, soft-float ABI, entry in
+  flash; `text 614K / data 12K / bss 3.8K`.
+- `bazel-bin/apps/blink_rp2350/blink.uf2` — picotool reports family
+  `rp2350-arm-s`, chip RP2350, image type "ARM Secure".
+- The `no_std` Rust symbol `blink_interval_ms` links into the ELF (C↔Rust proven).
+
+Build/verify commands (remember `export PATH="$HOME/.local/bin:$PATH"` for nix):
+```
+bazel build //:blink_rp2350
+nix shell nixpkgs#gcc-arm-embedded -c arm-none-eabi-size bazel-bin/apps/blink_rp2350/blink.elf
+nix shell nixpkgs#picotool -c picotool info bazel-bin/apps/blink_rp2350/blink.uf2
+```
+
+### Key things learned wiring arduino-pico into native Bazel (for Milestone 2)
+- pico-sdk ships its own BUILD.bazel → strip Bazel markers in the nix derivation
+  so the tree is one package (else globs can't cross the package boundary).
+- The nix source tree is store symlinks; globs work, but package markers block them.
+- Relative-include wrapper sources: `cores/rp2040/api/*.cpp` include
+  `ArduinoCore-API/api/*.cpp` (→ textual_hdrs); `sdkoverride/*` and `lwip/*`
+  include SDK `.c` by relative path (→ excluded; libs already prebuilt).
+- Full define set matters (platform_def.txt x2 + boards.txt ~90 defines);
+  `PICO_CYW43_ARCH_HEADER`, `__DYNAMIC_REENT__`, `NO_USB`/`DISABLE_USB_SERIAL`.
+- memmap_default.ld is a template → genrule substitutes region sizes (simplesub).
+- Link recipe: `--undefined=` runtime-init list + syscall stubs
+  (newlib_interface.o), `--wrap` response files, `--start-group` with the
+  prebuilt libs + `-lm -lc -lstdc++ -lc`.
+- **ABI: use the SOFT-float Rust triple `thumbv8m.main-none-eabi`** — eabihf
+  (hard-float) won't link with arduino-pico's softfp objects.
+- cc_toolchain_config needs `target_libc` + an explicit `archiver_flags` feature
+  (else `ar` runs with no args). Transition rules no longer take the
+  `_allowlist_function_transitions` attr in this Bazel.
+
+---
+
 ## Where we are (2026-07-10, session 2 — post-relaunch, actively building)
 
 Overlay landed: Bazelisk + Nix work. Bootstrapping is DONE and the build is

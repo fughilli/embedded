@@ -18,6 +18,7 @@ load(
     "flag_group",
     "flag_set",
     "tool",
+    "variable_with_value",
 )
 
 _COMPILE_ACTIONS = [
@@ -108,6 +109,44 @@ def _impl(ctx):
         )] if ctx.attr.link_flags else [],
     )
 
+    # Builds the `ar` command line (rcsD <output> <objects>). Without this the
+    # static-library action invokes `ar` with no arguments.
+    archiver_flags = feature(
+        name = "archiver_flags",
+        enabled = True,
+        flag_sets = [flag_set(
+            actions = [ACTION_NAMES.cpp_link_static_library],
+            flag_groups = [
+                flag_group(flags = ["rcsD"]),
+                flag_group(
+                    flags = ["%{output_execpath}"],
+                    expand_if_available = "output_execpath",
+                ),
+                flag_group(
+                    iterate_over = "libraries_to_link",
+                    flag_groups = [
+                        flag_group(
+                            flags = ["%{libraries_to_link.name}"],
+                            expand_if_equal = variable_with_value(
+                                name = "libraries_to_link.type",
+                                value = "object_file",
+                            ),
+                        ),
+                        flag_group(
+                            flags = ["%{libraries_to_link.object_files}"],
+                            iterate_over = "libraries_to_link.object_files",
+                            expand_if_equal = variable_with_value(
+                                name = "libraries_to_link.type",
+                                value = "object_file_group",
+                            ),
+                        ),
+                    ],
+                    expand_if_available = "libraries_to_link",
+                ),
+            ],
+        )],
+    )
+
     return cc_common.create_cc_toolchain_config_info(
         ctx = ctx,
         toolchain_identifier = ctx.attr.toolchain_identifier,
@@ -119,7 +158,7 @@ def _impl(ctx):
         abi_libc_version = "unknown",
         host_system_name = "local",
         action_configs = action_configs,
-        features = [default_compile, default_link],
+        features = [default_compile, default_link, archiver_flags],
         # Absolute /nix/store include dirs vary by pin; allowing the whole store
         # as a prefix suppresses "undeclared inclusion" errors hermetically.
         # Tighten to the exact reported dirs once known (see WORKLOG).

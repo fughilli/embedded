@@ -20,7 +20,22 @@ filegroup(name = "libbearssl_a", srcs = ["lib/rp2350/libbearssl.a"])
 
 filegroup(name = "ota_o", srcs = ["lib/rp2350/ota.o"])
 
-filegroup(name = "memmap_ld", srcs = ["lib/rp2350/memmap_default.ld"])
+# The shipped memmap_default.ld is a TEMPLATE; arduino-pico's simplesub.py
+# prelink hook substitutes the memory-region sizes before linking. We replicate
+# that with a genrule (values for rpipico2 / 4MB-no-FS / 512k RAM).
+genrule(
+    name = "memmap_ld",
+    srcs = ["lib/rp2350/memmap_default.ld"],
+    outs = ["memmap_default.gen.ld"],
+    cmd = ("sed " +
+           "-e 's/__FLASH_LENGTH__/4186112/g' " +
+           "-e 's/__EEPROM_START__/272621568/g' " +
+           "-e 's/__FS_START__/272621568/g' " +
+           "-e 's/__FS_END__/272621568/g' " +
+           "-e 's/__RAM_LENGTH__/512k/g' " +
+           "-e 's/__PSRAM_LENGTH__/0/g' " +
+           "$< > $@"),
+)
 
 # The shipped --wrap response files (math + memcpy → pico implementations).
 filegroup(name = "wrap_platform", srcs = ["lib/rp2350/platform_wrap.txt"])
@@ -48,7 +63,12 @@ cc_library(
             "cores/rp2040/lwip/**",
         ],
         allow_empty = True,
-    ) + ["boot2/rp2350/none.S"],  # build.boot2=none stub for rpipico2
+    ) + [
+        "boot2/rp2350/none.S",  # build.boot2=none stub for rpipico2
+        # Re-add the newlib syscall stubs (_sbrk/_write/_exit/...); standalone,
+        # unlike the rest of sdkoverride which we exclude.
+        "cores/rp2040/sdkoverride/newlib_interface.c",
+    ],
     hdrs = glob(
         [
             "cores/rp2040/**/*.h",
@@ -255,6 +275,11 @@ cc_library(
         "FS_START=272621568",
         "FS_END=272621568",
         "__DYNAMIC_REENT__",
+        # "No USB" mode: a headless blink doesn't need the USB device stack, and
+        # compiling it out avoids libpico.a pulling in the tinyusb class drivers
+        # (midid_*/hidd_*/mscd_*/netd_*).
+        "NO_USB",
+        "DISABLE_USB_SERIAL",
     ],
     # Space-containing USB descriptor strings — single-quote-wrapped so Bourne
     # tokenization keeps each as one token with the C-string quotes intact.
@@ -299,6 +324,12 @@ cc_library(
         "-Wl,--undefined=__pre_init_runtime_init_per_core_bootrom_reset",
         "-Wl,--undefined=__pre_init_runtime_init_per_core_h3_irq_registers",
         "-Wl,--undefined=__pre_init_runtime_init_per_core_irq_priorities",
+        # Force newlib_interface.o (weak _sbrk/_write/... stubs) into the link
+        # before libc references the syscalls — they all live in that one object.
+        "-Wl,--undefined=_sbrk",
+        "-Wl,--undefined=_write",
+        "-Wl,--undefined=_read",
+        "-Wl,--undefined=_exit",
         # Linker script + the group of prebuilt libs and system libs.
         "-Wl,--script=$(location :memmap_ld)",
         "-Wl,--no-warn-rwx-segments",

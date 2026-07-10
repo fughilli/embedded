@@ -85,7 +85,12 @@ rust.toolchain(
     edition = "2021",
     versions = ["1.85.0"],
     extra_target_triples = [
-        "thumbv8m.main-none-eabihf",  # RP2350 Cortex-M33 (see ABI note in WORKLOG)
+        # RP2350 Cortex-M33. Use the SOFT-float-ABI triple (eabi, not eabihf):
+        # arduino-pico builds -mfloat-abi=softfp (VFP instructions, but floats
+        # passed in core registers = soft ABI). eabihf is hard-float ABI and the
+        # linker refuses to merge it with softfp objects ("uses VFP register
+        # arguments"). eabi maps to the same constraints (cpu:armv8-m, os:none).
+        "thumbv8m.main-none-eabi",
         "riscv32imac-unknown-none-elf",  # ESP32-C6
     ],
 )
