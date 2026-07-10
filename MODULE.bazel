@@ -32,13 +32,13 @@ bazel_dep(name = "rules_nixpkgs_core", version = "0.13.0")
 # ---------------------------------------------------------------------------
 nix_repo = use_extension("@rules_nixpkgs_core//extensions:repository.bzl", "nix_repo")
 
-# Keep this channel in sync with flake.nix's nixpkgs input. Add `sha256 = ...`
-# after the first fetch prints it, to make the pin reproducible.
+# Pinned to a nixos-25.11 commit (branch tarballs 404 on the refs/tags URL that
+# `tag=` builds). Keep in sync with flake.nix's nixpkgs input.
 nix_repo.github(
     name = "nixpkgs",
     org = "NixOS",
     repo = "nixpkgs",
-    tag = "nixos-25.11",
+    commit = "b6018f87da91d19d0ab4cf979885689b469cdd41",
 )
 use_repo(nix_repo, "nixpkgs")
 

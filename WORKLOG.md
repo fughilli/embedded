@@ -4,16 +4,40 @@ Session handoff for a fresh agent with no memory of prior sessions. Read this
 first, then `git log`. The plan lives at (approved) — this file supersedes it
 with current state.
 
-## Where we are (2026-07-10)
+## Where we are (2026-07-10, session 2 — post-relaunch, actively building)
 
-Milestone 1 (RP2350 / Arm Cortex-M33) is **fully scaffolded but has not built
-green yet** — it cannot, because Nix + Bazelisk are installed by the container
-overlay, which only takes effect on the **next container launch**. All Bazel/Nix
-files are written and internally consistent. Milestone 2 (ESP32-C6) is stubbed.
+Overlay landed: Bazelisk + Nix work. Bootstrapping is DONE and the build is
+being iterated to green. Concrete progress this session:
 
-Everything committed. Nothing runs yet in this environment (no `nix`, no
-`bazel`). The next session's job is to relaunch, bootstrap, and iterate to a
-green `//apps/blink_rp2350:blink`.
+- **Nix on PATH fixed.** The overlay's `rm -rf per-user` dangled the `default`
+  profile that `ENV PATH` relied on. Fixed the overlay (appended a block
+  symlinking Determinate Nix bins into `/usr/local/bin`) so future relaunches
+  are clean. If nix is ever missing again: `find /nix/store -maxdepth 2 -type d
+  -name bin -path '*determinate-nix*'` and put it on PATH.
+- **nixpkgs pin fixed.** `nixos-25.11` is a *branch*, so `tag=` 404'd on the
+  refs/tags URL. MODULE.bazel now pins `commit = b6018f87…` (25.11 HEAD).
+- **arduino-pico hash resolved.** `rev = 5.6.1`,
+  `hash = sha256-Ul+Ft9Gewkiio/Y28ECycfF3TfVUUt6fezbjcNMLykw=` in
+  nix/arduino_pico_drv.nix.
+- **Toolchains VALIDATED.** `bazel build //rust/blink_timing --config=rp2350`
+  succeeded — `@arm_gcc` fetched via Nix, `thumbv8m` rust-std resolved, and both
+  cc + rust toolchains bind to `//platforms:rp2350`. (Also fixed a real bug: a
+  constraint_value and platform can't share a name → constraints are now
+  `*_board`, platforms are bare names.)
+- **arduino_pico.BUILD is now FAITHFUL**, transcribed from the repo's own
+  platform_{inc,def,wrap}.txt / core_{inc,wrap}.txt / boards.txt / platform.txt:
+  83 include dirs, real defines (F_CPU=125MHz, PICO_PLATFORM=rp2350-arm-s, …),
+  and the full link recipe (the critical `--undefined=` runtime-init list, the
+  `--wrap` response files passed via `@file`, `--script=memmap_default.ld`, and
+  the `--start-group … libpico.a liblwip.a libbearssl.a ota.o -lm -lc -lstdc++
+  -lc --end-group`). Toolchain no longer forces -ffreestanding/-nostartfiles
+  (arduino-pico uses neither).
+
+**Current step:** compiling `@arduino_pico//:core` for rp2350, iterating on any
+remaining missing-header/define errors, then linking `//apps/blink_rp2350:blink`
+and producing the `.uf2`.
+
+Original (pre-relaunch) scaffolding notes are retained below for reference.
 
 ## FIRST: relaunch to get the overlay
 

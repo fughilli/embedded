@@ -114,6 +114,7 @@ def _impl(ctx):
         target_cpu = ctx.attr.target_cpu,
         target_system_name = ctx.attr.target_system_name,
         compiler = "gcc",
+        target_libc = "newlib",
         abi_version = "unknown",
         abi_libc_version = "unknown",
         host_system_name = "local",

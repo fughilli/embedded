@@ -25,14 +25,15 @@ cc_toolchain_config(
     gpp = "@arm_gcc//:g++",
     ar = "@arm_gcc//:ar",
     strip = "@arm_gcc//:strip",
+    # arduino-pico compiles/links WITHOUT -ffreestanding / -nostartfiles /
+    # nano.specs; crt0 + entry come from the linker script + libpico.a and dead
+    # newlib startup is dropped by --gc-sections.
     compile_flags = _CORE_ARCH_FLAGS + [
         "-ffunction-sections",
         "-fdata-sections",
-        "-ffreestanding",
         "-no-canonical-prefixes",
     ],
     link_flags = _CORE_ARCH_FLAGS + [
-        "-nostartfiles",  # crt0 lives inside libpico.a
         "-no-canonical-prefixes",
     ],
 )
@@ -53,8 +54,9 @@ cc_toolchain(
 toolchain(
     name = "cc_toolchain",
     target_compatible_with = [
+        "@platforms//cpu:armv8-m",
         "@platforms//os:none",
-        "//platforms:rp2350",
+        "//platforms:rp2350_board",
     ],
     toolchain = ":rp2350_cc",
     toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",

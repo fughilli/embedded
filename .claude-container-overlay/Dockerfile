@@ -34,3 +34,12 @@ ENV PATH=/nix/var/nix/profiles/default/bin:$PATH
 # recreates and owns them on first `nix` invocation.
 RUN chmod -R go+rwX /nix \
     && rm -rf /nix/var/nix/profiles/per-user /nix/var/nix/gcroots/per-user
+
+# 2026-07-10: `/nix/var/nix/profiles/default` points into per-user/root, which
+# the line above deletes — so the default profile bin (which ENV PATH relies on)
+# dangles and `nix` isn't found. Symlink the Determinate Nix binaries into
+# /usr/local/bin (already on PATH, lives on the image fs) so every shell —
+# login, non-login, or Bazel repo-rule subprocess — finds them.
+RUN NIXBIN="$(find /nix/store -maxdepth 2 -type d -name bin -path '*-determinate-nix-*' | head -1)" \
+    && for b in "$NIXBIN"/*; do ln -sf "$b" /usr/local/bin/"$(basename "$b")"; done \
+    && nix --version

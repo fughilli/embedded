@@ -4,17 +4,21 @@
 # We use a custom `board` constraint as the primary discriminator (rather than
 # leaning on @platforms//cpu, whose set of embedded CPU values is incomplete for
 # Cortex-M33/rv32imac). @platforms//os:none marks bare-metal.
+#
+# Note the naming: the constraint_values are `*_board` and the platform() targets
+# are the bare board names (a constraint_value and a platform can't share a name
+# in one package).
 package(default_visibility = ["//visibility:public"])
 
 constraint_setting(name = "board")
 
 constraint_value(
-    name = "rp2350",
+    name = "rp2350_board",
     constraint_setting = ":board",
 )
 
 constraint_value(
-    name = "esp32c6",
+    name = "esp32c6_board",
     constraint_setting = ":board",
 )
 
@@ -26,7 +30,7 @@ platform(
     constraint_values = [
         "@platforms//cpu:armv8-m",
         "@platforms//os:none",
-        ":rp2350",
+        ":rp2350_board",
     ],
 )
 
@@ -36,17 +40,17 @@ platform(
     constraint_values = [
         "@platforms//cpu:riscv32",
         "@platforms//os:none",
-        ":esp32c6",
+        ":esp32c6_board",
     ],
 )
 
 # config_settings so libraries can select() on the active board.
 config_setting(
     name = "is_rp2350",
-    constraint_values = [":rp2350"],
+    constraint_values = [":rp2350_board"],
 )
 
 config_setting(
     name = "is_esp32c6",
-    constraint_values = [":esp32c6"],
+    constraint_values = [":esp32c6_board"],
 )
