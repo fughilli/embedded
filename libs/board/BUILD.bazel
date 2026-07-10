@@ -25,3 +25,16 @@ cc_library(
     # the repo root via Bazel's default -iquote, so no `includes` needed.
     deps = [":arduino_core"],
 )
+
+# ESP32-C6 second-stage bootloader as a flashable .bin (the SDK ships it as an
+# ELF). Board-level, so every esp32c6 app's flash target shares it — it's the
+# default `bootloader` of //rules:flash.bzl esptool_flash.
+genrule(
+    name = "esp32c6_bootloader_bin",
+    srcs = ["@arduino_esp32//:bootloader_elf"],
+    outs = ["esp32c6_bootloader.bin"],
+    cmd = ("$(execpath @esptool//:bin) --chip esp32c6 elf2image " +
+           "--flash_mode qio --flash_freq 80m --flash_size 4MB " +
+           "-o $@ $(location @arduino_esp32//:bootloader_elf)"),
+    tools = ["@esptool//:bin", "@esptool//:all"],
+)

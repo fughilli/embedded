@@ -20,7 +20,7 @@ See `WORKLOG.md` for the build/verify commands and the integration notes.
 | `platforms/` | `board` constraint + `platform()` targets (rp2350, esp32c6) |
 | `toolchains/cc/` | Reusable GCC-cross `cc_toolchain_config` + per-board `cc_toolchain` |
 | `rules/embedded.bzl` | `embedded_binary` rule: platform transition wrapping a cc_binary |
-| `rules/firmware.bzl` | `firmware_binary` macro: one call → per-board ELF/artifact/flash targets |
+| `rules/firmware.bzl` | `firmware_binary` rule: transition + package a cc_binary → board `.uf2`/`.bin` |
 | `rules/arduino_library.bzl` | Repo rule: fetch a library `.zip`, code-generate its BUILD (FastLED uses it) |
 | `libs/board/` | Board-support lib + the `arduino_core` facade, chosen by `select()` |
 | `libs/pins/` | Per-board pin config (LED data pin via `select()`, `NUM_LEDS`) |
@@ -95,8 +95,11 @@ required — "done" is a valid `.elf`/`.uf2`, inspected with `arm-none-eabi-size
   library depends on `//libs/board:arduino_core` (the `select()` facade) so it
   compiles for whichever board the transition selects. The Arduino *cores*
   themselves come via Nix, not this rule.
-- **`firmware_binary` macro** (`rules/firmware.bzl`) turns one board-agnostic
-  source into all per-board targets (ELF, `.uf2`/`.bin`, `flash_*`) — see
+- **`firmware_binary` rule** (`rules/firmware.bzl`) builds a board-agnostic
+  `cc_binary` for a `board` (via an outgoing platform transition) and packages
+  its flashable artifact (`.uf2` via picotool / `.bin` via esptool); the ELF is
+  in the `elf` output group. It's a rule (not a macro) whose every label
+  resolves in this module's repo, so it works from other modules unchanged — see
   `apps/blink` and `apps/rainbow`.
 
 ## Using this repo as a Bazel module
@@ -134,15 +137,18 @@ You can also just build this repo's own targets from your workspace, e.g.
 
 ### Build your own firmware app
 
-Depend on the `@firmware//` **wrapper targets** (they pull in the board-private
-Nix repos for you) and retarget with `embedded_binary`:
+Write one board-agnostic `cc_binary` depending on the `@firmware//` **wrapper
+targets** (they pull in the board-private Nix repos for you), then package + flash
+it per board with `firmware_binary` and the flash rules — every label inside
+those rules resolves in the `firmware` repo, so this just works:
 
 ```starlark
 # consumer BUILD.bazel
-load("@firmware//rules:embedded.bzl", "embedded_binary")
+load("@firmware//rules:firmware.bzl", "firmware_binary")
+load("@firmware//rules:flash.bzl", "esptool_flash", "picotool_flash")
 
 cc_binary(
-    name = "app_elf",
+    name = "app",
     srcs = ["app.cpp"],  # #include <Arduino.h>
     target_compatible_with = select({
         "@firmware//platforms:is_rp2350": [],
@@ -155,29 +161,35 @@ cc_binary(
     ],
 )
 
-embedded_binary(name = "app_rp2350", binary = ":app_elf", platform = "@firmware//platforms:rp2350")
-embedded_binary(name = "app_esp32c6", binary = ":app_elf", platform = "@firmware//platforms:esp32c6")
+firmware_binary(name = "rp2350", binary = ":app", board = "rp2350")    # -> rp2350.uf2
+firmware_binary(name = "esp32c6", binary = ":app", board = "esp32c6")  # -> esp32c6.bin
+
+picotool_flash(name = "flash_rp2350", uf2 = ":rp2350")
+esptool_flash(name = "flash_esp32c6", app = ":esp32c6")                # bootloader/parts default to firmware's
 ```
 
-`bazel build //:app_rp2350` produces the retargeted `.elf`; convert/flash it with
-picotool/esptool (see `apps/blink` for the genrules, or the flash rules below).
+`bazel build //:rp2350` gives the flashable `.uf2`; `bazel build //:rp2350
+--output_groups=elf` gives the raw `.elf`; `bazel run //:flash_esp32c6` flashes.
 
 > **Why the wrappers?** `@arduino_pico`, `@arduino_esp32`, `@picotool`, `@fastled`,
 > etc. are created by `firmware`'s module extensions and are **private to the
 > `firmware` module** — bzlmod does not expose a module's extension repos to its
 > consumers. Depend on the `@firmware//…` targets that wrap them
 > (`//libs/board:arduino_core`, `//libs/pins`, `//apps/...`), whose internal deps
-> resolve in `firmware`'s own repo mapping.
+> resolve in `firmware`'s own repo mapping. The rules above default their tools
+> (`@picotool`, `@esptool`, the esp32c6 bootloader/partitions) the same way.
 
 ### Reuse the individual rules
 
-All loadable from `@firmware//`:
+All loadable from `@firmware//`, and all use `firmware`-repo label defaults so
+they work from a consumer without naming firmware's private repos:
 
 | Load | Provides |
 | --- | --- |
-| `@firmware//rules:embedded.bzl` | `embedded_binary` (platform-transition wrapper) |
-| `@firmware//rules:flash.bzl` | `esptool_flash` / `picotool_flash` (tool defaults from firmware's Nix repos) |
-| `@firmware//rules:cbindgen.bzl` | `rust_cbindgen` (Rust → C headers; uses firmware's Nix `cbindgen`) |
+| `@firmware//rules:firmware.bzl` | `firmware_binary` (transition + package → `.uf2`/`.bin`) |
+| `@firmware//rules:embedded.bzl` | `embedded_binary` (just the platform-transition → `.elf`) |
+| `@firmware//rules:flash.bzl` | `esptool_flash` / `picotool_flash` |
+| `@firmware//rules:cbindgen.bzl` | `rust_cbindgen` (Rust → C headers) |
 | `@firmware//toolchains/cc:cc_toolchain_config.bzl` | the reusable GCC-cross `cc_toolchain_config` |
 
 And the **`arduino`** module extension adds your own Arduino library from a
@@ -194,12 +206,3 @@ arduino.library(
 )
 use_repo(arduino, "my_lib")
 ```
-
-### Caveat: the `firmware_binary` macro is in-repo only
-
-`@firmware//rules:firmware.bzl`'s `firmware_binary` references firmware-internal
-repos with **caller-relative** labels (`//platforms:…` and `$(execpath
-@picotool//…)` in a genrule `cmd`), which resolve against the *consuming* repo's
-mapping — so it works inside this repo but not from a dependent. From a consumer,
-compose the pieces above (`cc_binary` + `embedded_binary` + the flash rules), or
-copy the macro and repo-qualify its labels.

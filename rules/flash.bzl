@@ -67,11 +67,23 @@ esptool_flash = rule(
     executable = True,
     doc = "Flash a full bootable ESP32 image (bootloader+partitions+app).",
     attrs = {
-        "chip": attr.string(mandatory = True),
+        "chip": attr.string(default = "esp32c6"),
         "app": attr.label(mandatory = True, allow_single_file = True),
-        "bootloader": attr.label(mandatory = True, allow_single_file = True),
-        "partitions": attr.label(mandatory = True, allow_single_file = True),
-        "boot_app0": attr.label(mandatory = True, allow_single_file = True),
+        # These default to this module's (esp32c6) artifacts — the label defaults
+        # resolve in THIS .bzl's repo, so consumers only pass `app`. Override for
+        # another chip / partition layout.
+        "bootloader": attr.label(
+            default = "//libs/board:esp32c6_bootloader_bin",
+            allow_single_file = True,
+        ),
+        "partitions": attr.label(
+            default = "@arduino_esp32//:partitions_default",
+            allow_single_file = True,
+        ),
+        "boot_app0": attr.label(
+            default = "@arduino_esp32//:boot_app0",
+            allow_single_file = True,
+        ),
         "bootloader_offset": attr.string(default = "0x1000"),
         "flash_mode": attr.string(default = "qio"),
         "flash_freq": attr.string(default = "80m"),
