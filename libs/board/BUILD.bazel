@@ -1,8 +1,19 @@
-# Board-support library. The implementation .cpp and its deps are chosen by a
-# select() on the active board — this is the platform-support code that the
-# embedded_binary transition switches between.
+# Board-support library + the Arduino-core facade.
 package(default_visibility = ["//visibility:public"])
 
+# The per-board Arduino core, chosen once by select(). Anything needing the core
+# (board support, FastLED, apps) depends on this rather than repeating the
+# select. Resolved under the embedded_binary platform transition.
+cc_library(
+    name = "arduino_core",
+    deps = select({
+        "//platforms:is_rp2350": ["@arduino_pico//:core"],
+        "//platforms:is_esp32c6": ["@arduino_esp32//:core"],
+    }),
+)
+
+# Board-support: the implementation .cpp is chosen per-board by select() — this
+# is the platform-support code the embedded_binary transition switches between.
 cc_library(
     name = "board",
     srcs = select({
@@ -12,8 +23,5 @@ cc_library(
     hdrs = ["board.h"],
     # Full-path quote includes (`#include "libs/board/board.h"`) resolve against
     # the repo root via Bazel's default -iquote, so no `includes` needed.
-    deps = select({
-        "//platforms:is_rp2350": ["@arduino_pico//:core"],
-        "//platforms:is_esp32c6": ["@arduino_esp32//:core"],
-    }),
+    deps = [":arduino_core"],
 )

@@ -20,10 +20,13 @@ See `WORKLOG.md` for the build/verify commands and the integration notes.
 | `platforms/` | `board` constraint + `platform()` targets (rp2350, esp32c6) |
 | `toolchains/cc/` | Reusable GCC-cross `cc_toolchain_config` + per-board `cc_toolchain` |
 | `rules/embedded.bzl` | `embedded_binary` rule: platform transition wrapping a cc_binary |
-| `rules/arduino_library.bzl` | Repo rule: fetch a library `.zip`, code-generate its BUILD |
-| `libs/board/` | Board-support lib, implementation chosen by `select()` |
+| `rules/firmware.bzl` | `firmware_binary` macro: one call → per-board ELF/artifact/flash targets |
+| `rules/arduino_library.bzl` | Repo rule: fetch a library `.zip`, code-generate its BUILD (FastLED uses it) |
+| `libs/board/` | Board-support lib + the `arduino_core` facade, chosen by `select()` |
+| `libs/pins/` | Per-board pin config (LED data pin via `select()`, `NUM_LEDS`) |
 | `rust/blink_timing/` | no_std `rust_static_library` linked into the blink |
-| `apps/blink/` | One blink firmware for both boards (board chosen by `select()`) |
+| `apps/blink/` | Blink firmware for both boards (GPIO + linked Rust) |
+| `apps/rainbow/` | FastLED 64-LED rainbow chaser for both boards |
 
 ## Building (after the Nix overlay is in place)
 
@@ -37,6 +40,9 @@ bazel build //:blink_rp2350                    # blink.uf2  (alias)
 
 # ESP32-C6 (RISC-V): ELF then flashable BIN
 bazel build //:blink_esp32c6                   # blink.bin  (alias)
+
+# FastLED rainbow chaser (64-LED strip) for either board
+bazel build //:rainbow_rp2350 //:rainbow_esp32c6
 ```
 
 ## Flashing a connected board
@@ -45,6 +51,7 @@ bazel build //:blink_esp32c6                   # blink.bin  (alias)
 bazel run //apps/blink:flash_rp2350              # picotool load -x (board in BOOTSEL)
 bazel run //apps/blink:flash_esp32c6             # esptool write-flash (bootloader+parts+app)
 bazel run //apps/blink:flash_esp32c6 -- --port /dev/ttyACM0   # extra args pass through
+bazel run //apps/rainbow:flash_rp2350            # same targets exist for the rainbow app
 ```
 
 Each `flash` target builds the firmware, then execs the Nix-provided tool over
@@ -84,4 +91,10 @@ required — "done" is a valid `.elf`/`.uf2`, inspected with `arm-none-eabi-size
   ESP-IDF `.a` blobs.)
 - **Add a third-party Arduino library** with the `arduino` module extension
   (`rules/extensions.bzl`) — point it at a `.zip` and it code-generates a
-  `cc_library`. The arduino-pico *core* itself comes via Nix, not this rule.
+  `cc_library`. **FastLED** is wired this way in `MODULE.bazel`; its generated
+  library depends on `//libs/board:arduino_core` (the `select()` facade) so it
+  compiles for whichever board the transition selects. The Arduino *cores*
+  themselves come via Nix, not this rule.
+- **`firmware_binary` macro** (`rules/firmware.bzl`) turns one board-agnostic
+  source into all per-board targets (ELF, `.uf2`/`.bin`, `flash_*`) — see
+  `apps/blink` and `apps/rainbow`.

@@ -1,87 +1,16 @@
-# One blink app for both boards. A single cc_binary picks the board's Arduino
-# core by select() (resolved under each embedded_binary's platform transition);
-# per-board targets produce the flashable artifact and a `flash` runner.
-load("//rules:embedded.bzl", "embedded_binary")
-load("//rules:flash.bzl", "esptool_flash", "picotool_flash")
+# One blink app for both boards. firmware_binary generates the per-board ELF,
+# flashable artifact, and `flash` runner; the board core is picked by select()
+# (via //libs/board) under each embedded_binary's platform transition.
+load("//rules:firmware.bzl", "firmware_binary")
 
 package(default_visibility = ["//visibility:public"])
 
-# The firmware ELF. Board-agnostic in source; the core dep is select()'d on the
-# active board. target_compatible_with makes it a no-op on non-board platforms
-# (so `bazel build //apps/blink/...` / `//...` skips it instead of failing the
-# select) — it is only ever built via embedded_binary under a board transition.
-cc_binary(
-    name = "blink_elf",
+firmware_binary(
+    name = "blink",
     srcs = ["blink.cpp"],
-    target_compatible_with = select({
-        "//platforms:is_rp2350": [],
-        "//platforms:is_esp32c6": [],
-        "//conditions:default": ["@platforms//:incompatible"],
-    }),
     deps = [
-        "//libs/board",
+        "//libs/board",  # board support + the Arduino core
         "//rust/blink_timing",
         "//rust/blink_timing:header",
-    ] + select({
-        "//platforms:is_rp2350": ["@arduino_pico//:core"],
-        "//platforms:is_esp32c6": ["@arduino_esp32//:core"],
-    }),
-)
-
-# --- RP2350 (Arm) ----------------------------------------------------------
-embedded_binary(
-    name = "rp2350",
-    binary = ":blink_elf",
-    platform = "//platforms:rp2350",
-)
-
-genrule(
-    name = "rp2350_uf2",
-    srcs = [":rp2350"],
-    outs = ["blink_rp2350.uf2"],
-    cmd = "$(execpath @picotool//:bin) uf2 convert $(location :rp2350) $@ --family rp2350-arm-s",
-    tools = ["@picotool//:bin", "@picotool//:all"],
-)
-
-# bazel run //apps/blink:flash_rp2350   (board in BOOTSEL)
-picotool_flash(
-    name = "flash_rp2350",
-    uf2 = ":rp2350_uf2",
-)
-
-# --- ESP32-C6 (RISC-V) -----------------------------------------------------
-embedded_binary(
-    name = "esp32c6",
-    binary = ":blink_elf",
-    platform = "//platforms:esp32c6",
-)
-
-genrule(
-    name = "esp32c6_bin",
-    srcs = [":esp32c6"],
-    outs = ["blink_esp32c6.bin"],
-    cmd = ("$(execpath @esptool//:bin) --chip esp32c6 elf2image " +
-           "--flash_mode qio --flash_freq 80m --flash_size 4MB " +
-           "-o $@ $(location :esp32c6)"),
-    tools = ["@esptool//:bin", "@esptool//:all"],
-)
-
-genrule(
-    name = "bootloader_bin",
-    srcs = ["@arduino_esp32//:bootloader_elf"],
-    outs = ["bootloader.bin"],
-    cmd = ("$(execpath @esptool//:bin) --chip esp32c6 elf2image " +
-           "--flash_mode qio --flash_freq 80m --flash_size 4MB " +
-           "-o $@ $(location @arduino_esp32//:bootloader_elf)"),
-    tools = ["@esptool//:bin", "@esptool//:all"],
-)
-
-# bazel run //apps/blink:flash_esp32c6 [-- --port /dev/ttyACM0]
-esptool_flash(
-    name = "flash_esp32c6",
-    chip = "esp32c6",
-    app = ":esp32c6_bin",
-    bootloader = ":bootloader_bin",
-    partitions = "@arduino_esp32//:partitions_default",
-    boot_app0 = "@arduino_esp32//:boot_app0",
+    ],
 )

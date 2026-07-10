@@ -1,0 +1,15 @@
+# FastLED rainbow chaser for both boards. firmware_binary generates the per-board
+# ELF / artifact / flash targets; the board is picked by select() in the deps.
+load("//rules:firmware.bzl", "firmware_binary")
+
+package(default_visibility = ["//visibility:public"])
+
+firmware_binary(
+    name = "rainbow",
+    srcs = ["rainbow.cpp"],
+    deps = [
+        "//libs/board:arduino_core",  # the board's Arduino core (provides main())
+        "//libs/pins",                # LED_DATA_PIN (per board) + NUM_LEDS
+        "@fastled//:fastled",
+    ],
+)

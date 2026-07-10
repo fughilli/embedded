@@ -150,6 +150,23 @@ use_repo(
 )
 
 # ---------------------------------------------------------------------------
+# Add-on Arduino libraries via the repo rule (zip -> code-generated BUILD). The
+# generated cc_library depends on the board-agnostic core facade, so it compiles
+# for whichever board the embedded_binary transition selects.
+# ---------------------------------------------------------------------------
+arduino = use_extension("//rules:extensions.bzl", "arduino")
+arduino.library(
+    name = "fastled",
+    urls = ["https://github.com/FastLED/FastLED/archive/refs/tags/3.10.5.zip"],
+    sha256 = "1d873ce548a9a00aaaf0f8fd9e9c15560fd997f19871810e9889750f6094ae66",
+    strip_prefix = "FastLED-3.10.5",
+    src_dirs = ["src"],
+    defines = ["FASTLED_INTERNAL"],  # silence the version-pragma spam
+    deps = ["@firmware//libs/board:arduino_core"],
+)
+use_repo(arduino, "fastled")
+
+# ---------------------------------------------------------------------------
 # Rust: bare-metal target triples for both boards. rules_rust fetches prebuilt
 # rust-std (core/alloc) for these tier-2 triples on stable — no -Zbuild-std.
 # ---------------------------------------------------------------------------

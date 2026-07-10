@@ -10,3 +10,13 @@ alias(
     name = "blink_esp32c6",
     actual = "//apps/blink:esp32c6_bin",
 )
+
+alias(
+    name = "rainbow_rp2350",
+    actual = "//apps/rainbow:rp2350_uf2",
+)
+
+alias(
+    name = "rainbow_esp32c6",
+    actual = "//apps/rainbow:esp32c6_bin",
+)

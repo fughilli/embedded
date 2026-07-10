@@ -65,9 +65,15 @@ cc_library(
         allow_empty = True,
     ) + [
         "boot2/rp2350/none.S",  # build.boot2=none stub for rpipico2
-        # Re-add the newlib syscall stubs (_sbrk/_write/_exit/...); standalone,
-        # unlike the rest of sdkoverride which we exclude.
+        # Re-add the standalone sdkoverride files (the rest #include SDK .c by
+        # relative path and are excluded above): newlib syscall stubs, and the
+        # tinyusb class drivers that libpico.a's usbd.c references (so USB CDC /
+        # Serial works — FastLED needs it).
         "cores/rp2040/sdkoverride/newlib_interface.c",
+        "cores/rp2040/sdkoverride/hid_device.c",
+        "cores/rp2040/sdkoverride/midi_device.c",
+        "cores/rp2040/sdkoverride/msc_device.c",
+        "cores/rp2040/sdkoverride/ncm_device.c",
     ],
     hdrs = glob(
         [
@@ -275,11 +281,6 @@ cc_library(
         "FS_START=272621568",
         "FS_END=272621568",
         "__DYNAMIC_REENT__",
-        # "No USB" mode: a headless blink doesn't need the USB device stack, and
-        # compiling it out avoids libpico.a pulling in the tinyusb class drivers
-        # (midid_*/hidd_*/mscd_*/netd_*).
-        "NO_USB",
-        "DISABLE_USB_SERIAL",
     ],
     # Space-containing USB descriptor strings — single-quote-wrapped so Bourne
     # tokenization keeps each as one token with the C-string quotes intact.
@@ -330,6 +331,12 @@ cc_library(
         "-Wl,--undefined=_write",
         "-Wl,--undefined=_read",
         "-Wl,--undefined=_exit",
+        # Force in the tinyusb class drivers (libpico.a's usbd.c driver table
+        # references them, but they live in our core archive processed earlier).
+        "-Wl,--undefined=midid_init",
+        "-Wl,--undefined=hidd_init",
+        "-Wl,--undefined=mscd_init",
+        "-Wl,--undefined=netd_init",
         # Linker script + the group of prebuilt libs and system libs.
         "-Wl,--script=$(location :memmap_ld)",
         "-Wl,--no-warn-rwx-segments",

@@ -1,0 +1,15 @@
+# Per-board pin configuration. The LED strip data pin is chosen by select();
+# NUM_LEDS (strip length) is board-independent and lives in pins.h.
+#
+# Pins are placeholders — change them to match your wiring:
+#   RP2350 (Pico 2): GPIO 2      ESP32-C6: GPIO 8
+package(default_visibility = ["//visibility:public"])
+
+cc_library(
+    name = "pins",
+    hdrs = ["pins.h"],
+    defines = select({
+        "//platforms:is_rp2350": ["LED_DATA_PIN=2"],
+        "//platforms:is_esp32c6": ["LED_DATA_PIN=8"],
+    }),
+)

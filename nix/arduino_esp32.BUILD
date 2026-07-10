@@ -40,7 +40,8 @@ cc_library(
     name = "sdk_hdrs",
     hdrs = glob(
         ["sdk/esp32c6/include/**/*.h", "sdk/esp32c6/qio_qspi/include/**/*.h",
-         "cores/esp32/**/*.h", "variants/esp32c6/**/*.h", "sdk/esp32c6/include/**/*.hpp"],
+         "cores/esp32/**/*.h", "variants/esp32c6/**/*.h", "sdk/esp32c6/include/**/*.hpp",
+         "libraries/SPI/**/*.h"],
         allow_empty = True,
     ),
     includes = [
@@ -362,6 +363,7 @@ cc_library(
         "sdk/esp32c6/qio_qspi/include",
         "cores/esp32",
         "variants/esp32c6",
+        "libraries/SPI/src",  # FastLED's ESP32 SPI shim includes <SPI.h>
     ],
     defines = [
         "ESP32_ARDUINO_LIB_BUILDER",
@@ -390,6 +392,12 @@ cc_library(
         "ARDUINO_PARTITION_default",
         'ARDUINO_BOARD=\\"ESP32C6_DEV\\"',
         'ARDUINO_VARIANT=\\"esp32c6\\"',
+        # From platform.txt build.extra_flags — ESP32=ESP32 is what libraries
+        # (e.g. FastLED) key off for platform detection.
+        "ESP32=ESP32",
+        "CORE_DEBUG_LEVEL=0",
+        "ARDUINO_USB_MODE=1",
+        "ARDUINO_USB_CDC_ON_BOOT=1",
     ],
 )
 
@@ -460,7 +468,7 @@ cc_library(
 
 cc_library(
     name = "core_cpp",
-    srcs = glob(["cores/esp32/**/*.cpp", "variants/esp32c6/**/*.cpp"], allow_empty = True),
+    srcs = glob(["cores/esp32/**/*.cpp", "variants/esp32c6/**/*.cpp", "libraries/SPI/**/*.cpp"], allow_empty = True),
     copts = _CXX_COPTS,
     alwayslink = True,
     deps = [":sdk_hdrs"],

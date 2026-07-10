@@ -13,7 +13,7 @@ def _arduino_impl(module_ctx):
                 urls = lib.urls,
                 sha256 = lib.sha256,
                 strip_prefix = lib.strip_prefix,
-                lib_name = lib.lib_name,
+                lib_name = lib.lib_name or lib.name,
                 src_dirs = lib.src_dirs,
                 copts = lib.copts,
                 defines = lib.defines,
