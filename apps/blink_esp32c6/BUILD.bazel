@@ -1,0 +1,40 @@
+# ESP32-C6 blink firmware: cc_binary (.elf) -> embedded_binary (retarget to the
+# board via transition) -> genrule (esptool: .elf -> .bin).
+#
+# DRAFT (Milestone 2, not yet built). Depends on @arduino_esp32//:core (BUILD to
+# be written in nix/arduino_esp32.BUILD) and the esp32c6 toolchain + @esptool
+# repo being wired in MODULE.bazel. flash flags below are placeholders — confirm
+# from boards.txt (esp32c6.build.flash_mode/flash_freq/flash_size).
+load("//rules:embedded.bzl", "embedded_binary")
+
+package(default_visibility = ["//visibility:public"])
+
+cc_binary(
+    name = "blink_elf",
+    srcs = ["blink.cpp"],
+    deps = [
+        "//libs/board",
+        "//rust/blink_timing",
+        "@arduino_esp32//:core",
+    ],
+)
+
+embedded_binary(
+    name = "blink",
+    binary = ":blink_elf",
+    platform = "//platforms:esp32c6",
+)
+
+# elf -> flashable .bin. esptool comes from Nix (@esptool).
+genrule(
+    name = "blink_bin",
+    srcs = [":blink"],
+    outs = ["blink.bin"],
+    cmd = ("$(execpath @esptool//:bin) --chip esp32c6 elf2image " +
+           "--flash_mode qio --flash_freq 80m --flash_size 4MB " +
+           "-o $@ $(location :blink)"),
+    tools = [
+        "@esptool//:bin",
+        "@esptool//:all",
+    ],
+)

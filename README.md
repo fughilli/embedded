@@ -6,9 +6,9 @@ sources are supplied by **Nix** (via `rules_nixpkgs`); Bazel drives the actual
 compile/link. **Rust** modules link into the firmware via `rules_rust` with
 bare-metal target triples.
 
-Status: **Milestone 1 (RP2350 / Arm Cortex-M33) scaffolded.** Milestone 2
-(ESP32-C6) is stubbed. The build has not yet run green — it requires the Nix
-overlay (a container relaunch) and a round of iteration. See `WORKLOG.md`.
+Status: **Both boards build green.** RP2350 (Arm Cortex-M33) → `.uf2`; ESP32-C6
+(RISC-V rv32imac) → `.bin`. Each links a `no_std` Rust module into the firmware.
+See `WORKLOG.md` for the build/verify commands and the integration notes.
 
 ## Layout
 
@@ -31,10 +31,16 @@ overlay (a container relaunch) and a round of iteration. See `WORKLOG.md`.
 # One-time: resolve the arduino-pico source hash (see WORKLOG step 3).
 nix build .#arduino-pico
 
-# Build the firmware ELF, then the flashable UF2:
-bazel build //apps/blink_rp2350:blink        # blink.elf
-bazel build //:blink_rp2350                   # blink.uf2  (alias)
+# RP2350 (Arm): ELF then flashable UF2
+bazel build //apps/blink_rp2350:blink         # blink.elf
+bazel build //:blink_rp2350                    # blink.uf2  (alias)
+
+# ESP32-C6 (RISC-V): ELF then flashable BIN
+bazel build //apps/blink_esp32c6:blink_bin     # blink.bin
 ```
+
+Verify (no hardware): `picotool info blink.uf2` / `esptool image-info blink.bin`;
+`*-size`/`nm` on the ELF (the Rust `blink_interval_ms` symbol should resolve).
 
 The host needs only Bazelisk + Nix; everything else is hermetic. No board is
 required — "done" is a valid `.elf`/`.uf2`, inspected with `arm-none-eabi-size`,

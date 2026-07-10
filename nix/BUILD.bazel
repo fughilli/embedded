@@ -8,4 +8,12 @@ exports_files([
     "arduino_pico.BUILD",
     "arduino_pico.nix",
     "arduino_pico_drv.nix",
+    # ESP32-C6 (Milestone 2)
+    "riscv_gcc.BUILD",
+    "esptool.BUILD",
+    "arduino_esp32.BUILD",
+    "arduino_esp32.nix",
+    "arduino_esp32_drv.nix",
+    "esp_riscv_gcc.nix",
+    "esp32_arduino_libs.nix",
 ])

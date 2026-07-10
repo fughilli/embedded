@@ -74,7 +74,46 @@ nix_pkg.file(
     build_file = "//nix:arduino_pico.BUILD",
 )
 
-use_repo(nix_pkg, "arm_gcc", "picotool", "arduino_pico")
+# --- ESP32-C6 (Milestone 2) ------------------------------------------------
+# esptool — elf -> flashable .bin.
+nix_pkg.attr(
+    name = "esptool",
+    attr = "esptool",
+    repo = "@nixpkgs",
+    build_file = "//nix:esptool.BUILD",
+)
+
+# Espressif prebuilt riscv32-esp-elf GCC (esp-14.2.0_20260121), fetched +
+# autoPatchelf'd by nix/esp_riscv_gcc.nix.
+nix_pkg.file(
+    name = "riscv_gcc",
+    file = "//nix:arduino_esp32.nix",
+    file_deps = [
+        "//nix:arduino_esp32_drv.nix",
+        "//nix:esp32_arduino_libs.nix",
+        "//nix:esp_riscv_gcc.nix",
+    ],
+    attr = "riscv32-esp-elf",
+    repo = "@nixpkgs",
+    build_file = "//nix:riscv_gcc.BUILD",
+)
+
+# arduino-esp32 core merged with the esp32c6 prebuilt SDK (esp32-arduino-libs)
+# into one tree at sdk/esp32c6. Carries cc_library(core) — see arduino_esp32.BUILD.
+nix_pkg.file(
+    name = "arduino_esp32",
+    file = "//nix:arduino_esp32.nix",
+    file_deps = [
+        "//nix:arduino_esp32_drv.nix",
+        "//nix:esp32_arduino_libs.nix",
+        "//nix:esp_riscv_gcc.nix",
+    ],
+    attr = "arduino-esp32",
+    repo = "@nixpkgs",
+    build_file = "//nix:arduino_esp32.BUILD",
+)
+
+use_repo(nix_pkg, "arm_gcc", "picotool", "arduino_pico", "esptool", "riscv_gcc", "arduino_esp32")
 
 # ---------------------------------------------------------------------------
 # Rust: bare-metal target triples for both boards. rules_rust fetches prebuilt
@@ -99,5 +138,5 @@ use_repo(rust, "rust_toolchains")
 register_toolchains(
     "@rust_toolchains//:all",
     "//toolchains/cc/rp2350_arm:cc_toolchain",
-    # "//toolchains/cc/esp32c6:cc_toolchain",  # Milestone 2
+    "//toolchains/cc/esp32c6:cc_toolchain",
 )

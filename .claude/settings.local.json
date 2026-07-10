@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker system df *)",
+      "Bash(claude-container --shell)",
+      "Bash(kill %1)",
+      "Bash(wait)"
+    ]
+  }
+}

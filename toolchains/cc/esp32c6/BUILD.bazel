@@ -1,0 +1,56 @@
+# ESP32-C6 (RISC-V rv32imac) cc_toolchain: reusable config rule + the Nix
+# Espressif riscv32-esp-elf GCC (@riscv_gcc), gated to //platforms:esp32c6.
+#
+# Most compile/link detail (defines, includes, ld scripts, libs) is supplied by
+# the esp32-arduino-libs `flags/*` response files in nix/arduino_esp32.BUILD;
+# here we set only the base arch flags so the right multilib is selected.
+load("//toolchains/cc:cc_toolchain_config.bzl", "cc_toolchain_config")
+
+package(default_visibility = ["//visibility:public"])
+
+_ARCH_FLAGS = [
+    "-march=rv32imac_zicsr_zifencei",
+    "-mabi=ilp32",
+]
+
+cc_toolchain_config(
+    name = "config",
+    toolchain_identifier = "esp32c6-riscv32-esp-elf",
+    target_cpu = "riscv32",
+    target_system_name = "riscv32-esp-elf",
+    gcc = "@riscv_gcc//:gcc",
+    gpp = "@riscv_gcc//:g++",
+    ar = "@riscv_gcc//:ar",
+    strip = "@riscv_gcc//:strip",
+    compile_flags = _ARCH_FLAGS + [
+        "-ffunction-sections",
+        "-fdata-sections",
+        "-no-canonical-prefixes",
+    ],
+    link_flags = _ARCH_FLAGS + [
+        "-no-canonical-prefixes",
+    ],
+)
+
+cc_toolchain(
+    name = "esp32c6_cc",
+    all_files = "@riscv_gcc//:all",
+    ar_files = "@riscv_gcc//:all",
+    compiler_files = "@riscv_gcc//:all",
+    dwp_files = "@riscv_gcc//:all",
+    linker_files = "@riscv_gcc//:all",
+    objcopy_files = "@riscv_gcc//:all",
+    strip_files = "@riscv_gcc//:all",
+    toolchain_config = ":config",
+)
+
+toolchain(
+    name = "cc_toolchain",
+    target_compatible_with = [
+        "@platforms//cpu:riscv32",
+        "@platforms//os:none",
+        "//platforms:esp32c6_board",
+    ],
+    toolchain = ":esp32c6_cc",
+    toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
+)

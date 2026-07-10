@@ -1,13 +1,12 @@
-// ESP32-C6 board support (Milestone 2). Stub for now — dependency-free so the
-// select() branch analyzes on any host; fill in with the arduino-esp32 core
-// once the C6 toolchain lands.
+// ESP32-C6 board support: drive LED_BUILTIN via the Arduino API (arduino-esp32).
+#include <Arduino.h>
+
 #include "libs/board/board.h"
 
 extern "C" void board_setup(void) {
-  // TODO(milestone-2): pinMode(LED_BUILTIN, OUTPUT) via arduino-esp32.
+  pinMode(LED_BUILTIN, OUTPUT);
 }
 
 extern "C" void board_set_led(bool on) {
-  (void)on;
-  // TODO(milestone-2): digitalWrite(LED_BUILTIN, on).
+  digitalWrite(LED_BUILTIN, on ? HIGH : LOW);
 }

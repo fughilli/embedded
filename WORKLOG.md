@@ -1,5 +1,96 @@
 # WORKLOG
 
+## ✅✅ BOTH MILESTONES COMPLETE (2026-07-10, session 3)
+
+Both firmwares build green from one `bazel` invocation each:
+
+- `bazel build //:blink_rp2350` → `blink.uf2` (RP2350 Arm, picotool: rp2350-arm-s)
+- `bazel build //apps/blink_esp32c6:blink_bin` → `blink.bin` (esptool image-info:
+  valid ESP32-C6 image, chip ID 13, flash 4MB/80m/QIO). ELF: RISC-V, soft-float,
+  entry 0x40800828, text 227K/data 73K/bss 204K. Rust `blink_interval_ms` linked
+  (C↔Rust proven on RISC-V too), alongside `app_main`.
+
+The ESP32-C6 wiring that worked (for future reference):
+- Toolchain: Espressif prebuilt `riscv32-esp-elf-14.2.0_20260121` fetched
+  directly + autoPatchelf'd (`nix/esp_riscv_gcc.nix`) — do NOT use the
+  nixpkgs-esp-dev flake (it evaluates all of ESP-IDF, GBs — that's what filled
+  the disk and forced the session-2→3 restart).
+- Core + SDK merged into ONE nix tree (`nix/arduino_esp32_drv.nix`, SDK at
+  sdk/esp32c6) so a single Bazel repo owns both → no cross-repo include/-L pain.
+- `nix/arduino_esp32.BUILD` (generated): 318 sdk includes + variant/core as
+  native `includes`/`defines` attrs (propagate to the app); per-language std
+  (split `core_c`/`core_cpp`, both `alwayslink` to fix intra-core link order);
+  link = build-time `-L` genrule + the shipped `@ld_flags/@ld_scripts/@ld_libs`
+  response files in a `--start-group` with the SDK archives.
+- Gotcha: `libphy.a`/`libbtbb.a` live in `sdk/esp32c6/ld/` (not `lib/`) — staged
+  via the `sdk_libs` glob; `-L ld` already covers them.
+- esptool 5.x from nixpkgs; `elf2image` accepts the underscore flags.
+
+Everything committed. Historical session-2/3 notes retained below.
+
+---
+
+## (historical) 2026-07-10 session 3 — ESP32-C6 start + read-only /tmp incident
+
+The `nix flake show github:mirrexagon/nixpkgs-esp-dev` evaluated
+`esp-idf-full`/`esp-idf-riscv` and pulled GBs, filling the disk and flipping
+`/tmp/claude-501/...` read-only (blocked Bash until a restart). Avoided by using
+the direct fetchurl toolchain approach. Facts captured at the time:
+
+### ESP32-C6 facts (no re-research needed)
+
+- **arduino-esp32 3.3.10** source (no submodules needed for core):
+  `fetchFromGitHub espressif/arduino-esp32 rev=3.3.10`
+  hash `sha256-C4yinBEB+J/RwRDPpE3lhQ65DcXicVNLJnynWhftPDc=`
+- **RISC-V toolchain** (matches the libs — fetch this exact one, autoPatchelf'd):
+  `https://github.com/espressif/crosstool-NG/releases/download/esp-14.2.0_20260121/riscv32-esp-elf-14.2.0_20260121-aarch64-linux-gnu.tar.gz`
+  (binaries prefixed `riscv32-esp-elf-`; gcc 14.2.0)
+- **esp32-arduino-libs** (prebuilt IDF `.a` + `ld/` + `flags/*` + sdkconfig, host-agnostic):
+  `https://github.com/espressif/esp32-arduino-lib-builder/releases/download/idf-release_v5.5/esp32-arduino-libs-idf-release_v5.5-73550728-v6.zip`
+  — the esp32c6 SDK dir is `esp32c6/` inside; use `fetchzip` (hash via fakeHash).
+- **esptool**: nixpkgs `esptool` (4.9.x) via `nix_pkg.attr` (simple).
+- RISC-V flags (esp32c6): `-march=rv32imac_zicsr_zifencei -mabi=ilp32`. Rust
+  triple `riscv32imac-unknown-none-elf` (already registered in MODULE.bazel).
+- **NOT yet read** (do first after restart): arduino-esp32 `platform.txt` esp32c6
+  `recipe.c.combine` + the `@{sdk}/flags/{defines,includes,c_flags,cpp_flags,
+  ld_flags,ld_scripts,ld_libs}` response files. The esp32 build passes these as
+  `@file` args; compile/link read `-I`/`-L` paths RELATIVE to the sdk dir, so
+  they likely need `-iprefix {sdk}/` (like arduino-pico's includes) or running
+  with cwd=sdk. This is the main iteration surface (expect the same kind of
+  multi-round debugging as RP2350). elf→bin: `esptool --chip esp32c6 elf2image`.
+
+### Plan after restart (Milestone 2)
+
+**Already drafted this session (files on disk, uncommitted, UNTESTED):**
+`nix/esp_riscv_gcc.nix`, `nix/esp32_arduino_libs.nix`, `nix/arduino_esp32_drv.nix`,
+`nix/arduino_esp32.nix`, `nix/riscv_gcc.BUILD`, `nix/esptool.BUILD`,
+`toolchains/cc/esp32c6/BUILD.bazel`, `libs/board/esp32c6.cpp` (real impl),
+`apps/blink_esp32c6/{blink.cpp,BUILD.bazel}` (draft), `nix/arduino_esp32.BUILD`
+(placeholder filegroup only), `nix/BUILD.bazel` exports updated.
+
+**Still TODO (needs Bash):**
+1. `export PATH="$HOME/.local/bin:$PATH"`. If nix missing, the overlay symlinks it
+   into /usr/local/bin — should just work.
+2. Resolve fakeHash placeholders: `nix build .#...` for the riscv gcc tarball +
+   esp32-arduino-libs zip (add flake `packages` outputs or use nix-prefetch).
+3. Wire MODULE.bazel: `nix_pkg.file` for riscv_gcc / arduino_esp32 /
+   esp32_arduino_libs (attrs from nix/arduino_esp32.nix), `nix_pkg.attr` esptool,
+   `use_repo`, and `register_toolchains("//toolchains/cc/esp32c6:cc_toolchain")`.
+4. Read arduino-esp32 `platform.txt` (esp32c6 recipe.c.combine) + esp32c6
+   `flags/*` response files; write the real `nix/arduino_esp32.BUILD`
+   cc_library(core) + cross-repo cc_import of @esp32_arduino_libs sdk libs/ld.
+   (autoPatchelf on the gcc + the response-file include model are the likely
+   iteration pain points.)
+5. Update `libs/board/BUILD` esp32c6 select branch to dep `@arduino_esp32//:core`.
+6. Build + verify: `bazel build //apps/blink_esp32c6:blink_bin`;
+   `esptool image-info blink.bin`; riscv nm shows blink_interval_ms.
+
+NOTE: `//apps/blink_esp32c6` + libs/board esp32c6 branch reference repos not yet
+in MODULE.bazel, so `bazel build //...` will error until wired — build
+`//:blink_rp2350` specifically (still green).
+
+---
+
 Session handoff for a fresh agent with no memory of prior sessions. Read this
 first, then `git log`. The plan lives at (approved) — this file supersedes it
 with current state.
