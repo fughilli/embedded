@@ -1,0 +1,26 @@
+# bzlmod is the source of truth; no WORKSPACE.
+common --enable_bzlmod
+
+# Hermetic action env so the on-disk cache is correct across machines.
+build --incompatible_strict_action_env
+
+# Bare-metal: we do our own toolchain resolution via registered cc_toolchains.
+build --incompatible_enable_cc_toolchain_resolution
+
+# Persist caches in the workspace tree (dot-prefixed, gitignored) so they
+# survive container restarts that wipe ~/.cache. Both are content-addressable.
+build  --disk_cache=.bazel-disk-cache        # action outputs
+common --repository_cache=.bazel-repo-cache  # downloaded external archives
+
+test --test_output=errors
+
+# aarch64 SIGILL guard: some Bazel/bundled-JDK combos emit SVE instructions that
+# crash the JVM on certain aarch64 hosts. Harmless on hosts without SVE.
+startup --host_jvm_args=-XX:UseSVE=0
+
+# --- Per-board convenience configs -----------------------------------------
+# `bazel build --config=rp2350 //...` retargets the whole build to the board.
+# (The embedded_binary rule sets the platform per-target via a transition, so
+# these configs are only needed when building plain cc_* targets directly.)
+build:rp2350  --platforms=//platforms:rp2350
+build:esp32c6 --platforms=//platforms:esp32c6

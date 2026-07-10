@@ -1,0 +1,11 @@
+# Exposes the Nix expression + generated BUILD files so they can be referenced
+# as labels from MODULE.bazel (nix_repo/nix_pkg `file` / `build_file` attrs).
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "arm_gcc.BUILD",
+    "picotool.BUILD",
+    "arduino_pico.BUILD",
+    "arduino_pico.nix",
+    "arduino_pico_drv.nix",
+])

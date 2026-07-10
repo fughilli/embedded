@@ -1,0 +1,55 @@
+# Firmware monorepo — ESP32-C6 + RP2350 on Bazel
+
+Bare-metal firmware built with **Bazel (bzlmod)** using native `cc_library` /
+`cc_binary` rules. Cross toolchains, `picotool`/`esptool`, and Arduino core
+sources are supplied by **Nix** (via `rules_nixpkgs`); Bazel drives the actual
+compile/link. **Rust** modules link into the firmware via `rules_rust` with
+bare-metal target triples.
+
+Status: **Milestone 1 (RP2350 / Arm Cortex-M33) scaffolded.** Milestone 2
+(ESP32-C6) is stubbed. The build has not yet run green — it requires the Nix
+overlay (a container relaunch) and a round of iteration. See `WORKLOG.md`.
+
+## Layout
+
+| Path | What |
+| --- | --- |
+| `.claude-container-overlay/Dockerfile` | Installs Nix + Bazelisk (needs container relaunch) |
+| `flake.nix`, `nix/` | Nix-provided toolchains + arduino-pico source; BUILD files exposing them |
+| `MODULE.bazel` | bzlmod: rule sets, Nix repos, Rust triples, toolchain registration |
+| `platforms/` | `board` constraint + `platform()` targets (rp2350, esp32c6) |
+| `toolchains/cc/` | Reusable GCC-cross `cc_toolchain_config` + per-board `cc_toolchain` |
+| `rules/embedded.bzl` | `embedded_binary` rule: platform transition wrapping a cc_binary |
+| `rules/arduino_library.bzl` | Repo rule: fetch a library `.zip`, code-generate its BUILD |
+| `libs/board/` | Board-support lib, implementation chosen by `select()` |
+| `rust/blink_timing/` | no_std `rust_static_library` linked into the blink |
+| `apps/blink_rp2350/` | The RP2350 blink firmware (`.elf` → `.uf2`) |
+
+## Building (after the Nix overlay is in place)
+
+```sh
+# One-time: resolve the arduino-pico source hash (see WORKLOG step 3).
+nix build .#arduino-pico
+
+# Build the firmware ELF, then the flashable UF2:
+bazel build //apps/blink_rp2350:blink        # blink.elf
+bazel build //:blink_rp2350                   # blink.uf2  (alias)
+```
+
+The host needs only Bazelisk + Nix; everything else is hermetic. No board is
+required — "done" is a valid `.elf`/`.uf2`, inspected with `arm-none-eabi-size`,
+`objdump`, and `picotool info`.
+
+## Design notes
+
+- **`embedded_binary` + transition.** `apps/blink_rp2350:blink` sets
+  `//command_line_option:platforms` to `//platforms:rp2350` via an outgoing
+  transition, so one `bazel build` retargets the whole subgraph — the cc/Rust
+  toolchains resolve to the board and `select()`s pick the board's support code.
+- **Nix supplies inputs, Bazel builds.** We do NOT run ESP-IDF/Pico-SDK CMake.
+  RP2350 links a prebuilt `libpico.a` (shipped by arduino-pico) + its linker
+  script; only the sketch + core are compiled. (ESP32-C6 will link prebuilt
+  ESP-IDF `.a` blobs.)
+- **Add a third-party Arduino library** with the `arduino` module extension
+  (`rules/extensions.bzl`) — point it at a `.zip` and it code-generates a
+  `cc_library`. The arduino-pico *core* itself comes via Nix, not this rule.

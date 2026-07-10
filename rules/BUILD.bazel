@@ -1,0 +1,8 @@
+# Package marker so //rules:*.bzl files are loadable.
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "embedded.bzl",
+    "arduino_library.bzl",
+    "extensions.bzl",
+])

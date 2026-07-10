@@ -1,0 +1,37 @@
+# RP2350 blink firmware: cc_binary (.elf) -> embedded_binary (retarget to the
+# board via transition) -> genrule (picotool: .elf -> .uf2).
+load("//rules:embedded.bzl", "embedded_binary")
+
+package(default_visibility = ["//visibility:public"])
+
+# The firmware ELF. Arch/link-script/wrap flags come from the cc_toolchain and
+# the @arduino_pico//:core linkopts, so this target stays board-agnostic.
+cc_binary(
+    name = "blink_elf",
+    srcs = ["blink.cpp"],
+    deps = [
+        "//libs/board",
+        "//rust/blink_timing",
+        "@arduino_pico//:core",
+    ],
+)
+
+# Retarget the whole subgraph to RP2350 (picks the arm cc_toolchain + the
+# rp2350 select() branches). Exposes blink.elf.
+embedded_binary(
+    name = "blink",
+    binary = ":blink_elf",
+    platform = "//platforms:rp2350",
+)
+
+# elf -> uf2 for drag-and-drop flashing. picotool comes from Nix (@picotool).
+genrule(
+    name = "blink_uf2",
+    srcs = [":blink"],
+    outs = ["blink.uf2"],
+    cmd = "$(execpath @picotool//:bin) uf2 convert $(location :blink) $@ --family rp2350-arm-s",
+    tools = [
+        "@picotool//:bin",
+        "@picotool//:all",  # runtime libs picotool may dlopen
+    ],
+)

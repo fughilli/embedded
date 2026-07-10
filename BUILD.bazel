@@ -1,0 +1,7 @@
+# Root package. Convenience aliases for the default firmware artifacts.
+package(default_visibility = ["//visibility:public"])
+
+alias(
+    name = "blink_rp2350",
+    actual = "//apps/blink_rp2350:blink_uf2",
+)

@@ -1,0 +1,15 @@
+# no_std Rust static library. Emits CcInfo, so a cc_binary can depend on it
+# directly and link it with the board's cc_toolchain. Built for the board's
+# Rust triple (thumbv8m.main-none-eabihf on RP2350) via toolchain resolution
+# against the target platform.
+load("@rules_rust//rust:defs.bzl", "rust_static_library")
+
+package(default_visibility = ["//visibility:public"])
+
+rust_static_library(
+    name = "blink_timing",
+    srcs = ["src/lib.rs"],
+    edition = "2021",
+    # Bare-metal no_std: abort on panic so we don't need eh_personality.
+    rustc_flags = ["-Cpanic=abort"],
+)

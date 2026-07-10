@@ -1,0 +1,3 @@
+# Cache Bazel binaries inside the project tree so they survive container
+# rebuilds / fresh homes (path is relative to the workspace root).
+BAZELISK_HOME=.bazelisk

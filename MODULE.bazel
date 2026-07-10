@@ -1,0 +1,98 @@
+"""Bazel (bzlmod) module for ESP32-C6 + RP2350 bare-metal firmware.
+
+Toolchains and Arduino core sources are supplied by Nix via rules_nixpkgs; Bazel
+does the actual compile/link with native cc_* rules against those inputs. Rust
+modules link into the firmware via rules_rust with bare-metal target triples.
+
+Version pins were verified against the Bazel Central Registry on 2026-07-10.
+See WORKLOG.md for the post-relaunch bootstrap order and the list of values that
+still need to be validated on a Nix-enabled host (FOD hashes, arduino-pico tag).
+"""
+
+module(
+    name = "firmware",
+    version = "0.0.0",
+    compatibility_level = 1,
+)
+
+# --- Core rule sets (pinned) ------------------------------------------------
+bazel_dep(name = "rules_cc", version = "0.2.22")
+bazel_dep(name = "platforms", version = "1.1.0")
+bazel_dep(name = "bazel_skylib", version = "1.9.0")
+bazel_dep(name = "rules_pkg", version = "1.2.0")
+bazel_dep(name = "rules_rust", version = "0.71.3")
+
+# rules_nixpkgs: only the *core* module is on the BCR. We do NOT use
+# rules_nixpkgs_cc — we hand-write our bare-metal cc_toolchains (§toolchains/cc)
+# and only borrow the compiler *binaries* + Arduino sources from Nix.
+bazel_dep(name = "rules_nixpkgs_core", version = "0.13.0")
+
+# ---------------------------------------------------------------------------
+# Nix: one nixpkgs repo, then individual derivations imported as Bazel repos.
+# ---------------------------------------------------------------------------
+nix_repo = use_extension("@rules_nixpkgs_core//extensions:repository.bzl", "nix_repo")
+
+# Keep this channel in sync with flake.nix's nixpkgs input. Add `sha256 = ...`
+# after the first fetch prints it, to make the pin reproducible.
+nix_repo.github(
+    name = "nixpkgs",
+    org = "NixOS",
+    repo = "nixpkgs",
+    tag = "nixos-25.11",
+)
+use_repo(nix_repo, "nixpkgs")
+
+nix_pkg = use_extension("@rules_nixpkgs_core//extensions:package.bzl", "nix_pkg")
+
+# arm-none-eabi GCC (13.3.rel1, ships newlib-nano's libc_nano) — RP2350.
+nix_pkg.attr(
+    name = "arm_gcc",
+    attr = "gcc-arm-embedded",
+    repo = "@nixpkgs",
+    build_file = "//nix:arm_gcc.BUILD",
+)
+
+# picotool — elf -> uf2 for RP2350.
+nix_pkg.attr(
+    name = "picotool",
+    attr = "picotool",
+    repo = "@nixpkgs",
+    build_file = "//nix:picotool.BUILD",
+)
+
+# arduino-pico core sources + prebuilt libpico.a + linker script, fetched by a
+# small Nix derivation (nix/arduino_pico.nix). The generated repo carries the
+# cc_library(core) + cc_import(libpico) — see nix/arduino_pico.BUILD.
+nix_pkg.file(
+    name = "arduino_pico",
+    file = "//nix:arduino_pico.nix",
+    # arduino_pico.nix does `import ./arduino_pico_drv.nix`, so that file must be
+    # brought into the Nix eval context alongside it.
+    file_deps = ["//nix:arduino_pico_drv.nix"],
+    attr = "arduino-pico",
+    repo = "@nixpkgs",
+    build_file = "//nix:arduino_pico.BUILD",
+)
+
+use_repo(nix_pkg, "arm_gcc", "picotool", "arduino_pico")
+
+# ---------------------------------------------------------------------------
+# Rust: bare-metal target triples for both boards. rules_rust fetches prebuilt
+# rust-std (core/alloc) for these tier-2 triples on stable — no -Zbuild-std.
+# ---------------------------------------------------------------------------
+rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
+rust.toolchain(
+    edition = "2021",
+    versions = ["1.85.0"],
+    extra_target_triples = [
+        "thumbv8m.main-none-eabihf",  # RP2350 Cortex-M33 (see ABI note in WORKLOG)
+        "riscv32imac-unknown-none-elf",  # ESP32-C6
+    ],
+)
+use_repo(rust, "rust_toolchains")
+
+register_toolchains(
+    "@rust_toolchains//:all",
+    "//toolchains/cc/rp2350_arm:cc_toolchain",
+    # "//toolchains/cc/esp32c6:cc_toolchain",  # Milestone 2
+)

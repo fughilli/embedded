@@ -1,0 +1,61 @@
+# RP2350 (Arm Cortex-M33) cc_toolchain: our reusable config rule + the Nix
+# arm-none-eabi GCC (@arm_gcc), gated to the //platforms:rp2350 platform.
+load("//toolchains/cc:cc_toolchain_config.bzl", "cc_toolchain_config")
+
+package(default_visibility = ["//visibility:public"])
+
+# Cortex-M33 bare-metal flags (from arduino-pico boards.txt: softfp, fpv5-sp,
+# armv8-m.main+fp+dsp, +cmse). These must match the ABI of the prebuilt
+# libpico.a exactly, or the final link fails on FP-ABI mismatch.
+_CORE_ARCH_FLAGS = [
+    "-mcpu=cortex-m33",
+    "-mthumb",
+    "-march=armv8-m.main+fp+dsp",
+    "-mfloat-abi=softfp",
+    "-mfpu=fpv5-sp-d16",
+    "-mcmse",
+]
+
+cc_toolchain_config(
+    name = "config",
+    toolchain_identifier = "rp2350-arm-none-eabi",
+    target_cpu = "cortex-m33",
+    target_system_name = "arm-none-eabi",
+    gcc = "@arm_gcc//:gcc",
+    gpp = "@arm_gcc//:g++",
+    ar = "@arm_gcc//:ar",
+    strip = "@arm_gcc//:strip",
+    compile_flags = _CORE_ARCH_FLAGS + [
+        "-ffunction-sections",
+        "-fdata-sections",
+        "-ffreestanding",
+        "-no-canonical-prefixes",
+    ],
+    link_flags = _CORE_ARCH_FLAGS + [
+        "-nostartfiles",  # crt0 lives inside libpico.a
+        "-no-canonical-prefixes",
+    ],
+)
+
+cc_toolchain(
+    name = "rp2350_cc",
+    all_files = "@arm_gcc//:all",
+    ar_files = "@arm_gcc//:all",
+    compiler_files = "@arm_gcc//:all",
+    dwp_files = "@arm_gcc//:all",
+    linker_files = "@arm_gcc//:all",
+    objcopy_files = "@arm_gcc//:all",
+    strip_files = "@arm_gcc//:all",
+    toolchain_config = ":config",
+)
+
+# Registered in MODULE.bazel; resolves when the target platform is rp2350.
+toolchain(
+    name = "cc_toolchain",
+    target_compatible_with = [
+        "@platforms//os:none",
+        "//platforms:rp2350",
+    ],
+    toolchain = ":rp2350_cc",
+    toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
+)
