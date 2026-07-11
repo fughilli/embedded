@@ -1,6 +1,10 @@
 # bzlmod is the source of truth; no WORKSPACE.
 common --enable_bzlmod
 
+# The nix_repo/nix_pkg extension usages are isolated (see MODULE.bazel) so the
+# module works as a dependency; isolation is experimental in Bazel 7.
+common --experimental_isolated_extension_usages
+
 # Hermetic action env so the on-disk cache is correct across machines.
 build --incompatible_strict_action_env
 

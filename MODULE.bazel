@@ -38,7 +38,16 @@ bazel_dep(name = "rules_nixpkgs_core", version = "0.13.0")
 # ---------------------------------------------------------------------------
 # Nix: one nixpkgs repo, then individual derivations imported as Bazel repos.
 # ---------------------------------------------------------------------------
-nix_repo = use_extension("@rules_nixpkgs_core//extensions:repository.bzl", "nix_repo")
+# isolate: the attr/file tags are root-module-only for shared extension
+# usages, and this module is consumed as a DEPENDENCY by led_mapper (vendored
+# at third_party/embedded). Isolation scopes the repos to this module and
+# lifts the restriction; consumers need --experimental_isolated_extension_usages
+# (Bazel 7) in their .bazelrc, as this repo's own .bazelrc does.
+nix_repo = use_extension(
+    "@rules_nixpkgs_core//extensions:repository.bzl",
+    "nix_repo",
+    isolate = True,
+)
 
 # Pinned to a nixos-25.11 commit (branch tarballs 404 on the refs/tags URL that
 # `tag=` builds). Keep in sync with flake.nix's nixpkgs input.
@@ -50,7 +59,11 @@ nix_repo.github(
 )
 use_repo(nix_repo, "nixpkgs")
 
-nix_pkg = use_extension("@rules_nixpkgs_core//extensions:package.bzl", "nix_pkg")
+nix_pkg = use_extension(
+    "@rules_nixpkgs_core//extensions:package.bzl",
+    "nix_pkg",
+    isolate = True,
+)
 
 # arm-none-eabi GCC (13.3.rel1, ships newlib-nano's libc_nano) — RP2350.
 nix_pkg.attr(
