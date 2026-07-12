@@ -12,7 +12,14 @@
       "Bash(ps *)",
       "Bash(git add *)",
       "Bash(git rebase *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(system_profiler SPAirPortDataType)",
+      "Bash(brew install *)",
+      "Bash(arduino-cli compile *)",
+      "Bash(arduino-cli upload *)",
+      "WebSearch",
+      "Bash(networksetup -listallhardwareports)",
+      "Bash(networksetup -getairportnetwork en0)"
     ]
   }
 }
