@@ -46,6 +46,16 @@ genrule(
 # outgrow default.csv's 0x140000 slot (WiFi + webserver + FastLED + a
 # protocol stack lands around 1.5 MB). Same nvs/otadata/app0 offsets, so
 # esptool_flash needs only `partitions = ...` overridden.
+# 8 MB dual-OTA layout (3.2 MB per app slot) — for BLE-enabled apps that
+# outgrow even no_ota's 2 MB on 8 MB-flash boards (the C6 devkit).
+genrule(
+    name = "partitions_default_8mb",
+    srcs = ["tools/partitions/default_8MB.csv"],
+    outs = ["partitions_default_8mb.bin"],
+    cmd = "python3 $(location :gen_esp32part) -q $(location tools/partitions/default_8MB.csv) $@",
+    tools = [":gen_esp32part"],
+)
+
 genrule(
     name = "partitions_no_ota",
     srcs = ["tools/partitions/no_ota.csv"],
