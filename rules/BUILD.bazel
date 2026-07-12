@@ -5,4 +5,5 @@ exports_files([
     "embedded.bzl",
     "arduino_library.bzl",
     "extensions.bzl",
+    "resource_gen.py",
 ])
