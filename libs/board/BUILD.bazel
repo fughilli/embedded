@@ -33,8 +33,11 @@ genrule(
     name = "esp32c6_bootloader_bin",
     srcs = ["@arduino_esp32//:bootloader_elf"],
     outs = ["esp32c6_bootloader.bin"],
+    # Header says DIO even though the bootloader is the qio variant: the C6 ROM
+    # always boots in DIO and the bootloader switches to quad I/O itself
+    # (arduino-esp32 does the same: FlashMode.qio.build.flash_mode=dio).
     cmd = ("$(execpath @esptool//:bin) --chip esp32c6 elf2image " +
-           "--flash_mode qio --flash_freq 80m --flash_size 4MB " +
+           "--flash_mode dio --flash_freq 80m --flash_size 4MB " +
            "-o $@ $(location @arduino_esp32//:bootloader_elf)"),
     tools = ["@esptool//:bin", "@esptool//:all"],
 )

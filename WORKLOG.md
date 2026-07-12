@@ -1,5 +1,43 @@
 # WORKLOG
 
+## ✅ ESP32-C6 RAINBOW RUNS ON HARDWARE (2026-07-11, session 4)
+
+`bazel run //apps/rainbow:flash_esp32c6` now produces a rainbow on the devkit's
+GPIO8 WS2812. Three stacked bugs meant no Bazel-built image had ever actually
+booted on the C6 (an old Arduino-IDE bootloader at 0x0 kept running whatever it
+found, masking everything):
+
+1. **Bootloader offset**: `esptool_flash` wrote the bootloader at 0x1000
+   (ESP32/S2 convention). The C6 ROM loads from **0x0** (`rules/flash.bzl`).
+2. **QIO vs DIO image headers**: we stamped QIO into image headers; the C6 ROM
+   boots in DIO and firmware upgrades to quad I/O itself. Symptom:
+   `ets_loader.c 67` + TG0 watchdog boot loop. arduino-esp32 does the same
+   remap (`FlashMode.qio.build.flash_mode=dio` in boards.txt). Now: `elf2image
+   --flash_mode dio` for bootloader + app images, and `write-flash
+   --flash-mode keep` so esptool doesn't re-stamp the header at 0x0.
+3. **Stale partition table**: the repo's shipped `tools/partitions/default.bin`
+   is ancient — old layout, no trailing MD5 row, which IDF ≥5 requires
+   (`load_partitions returned 0x105` → assert in `esp_ota_get_running_partition`
+   → reboot loop). Now generated from `default.csv` via `gen_esp32part.py`,
+   like the IDE does (`nix/arduino_esp32.BUILD`).
+
+Also: `nix/esp_riscv_gcc.nix` now selects the toolchain tarball by host
+platform (was hardcoded aarch64-linux + autoPatchelfHook, which fails on
+macOS; autoPatchelf/zlib deps are now Linux-only). x86_64-linux hash is still
+a fakeHash placeholder — fill in on first use.
+
+Debugging notes for next time:
+- USB-Serial/JTAG re-enumerates on reset, so one-shot boot logs are easy to
+  miss; a scratch app that prints its probe result every second in `loop()`
+  beats chasing the boot log. `rmt_new_tx_channel`+`rmt_enable` on the LED pin
+  is a good FastLED-equivalent probe.
+- Read-back + `esptool image-info`/`cmp` against the built artifact tells you
+  what's REALLY on the chip; "Hash of data verified" only means the write
+  landed, not that anything boots it.
+- Known-good reference: Arduino IDE cache (`~/Library/Caches/arduino/sketches`)
+  keeps `build.options.json`, `compile_commands.json`, and the exact
+  bootloader/partition bins it flashed — ideal for diffing configs.
+
 ## ✅✅ BOTH MILESTONES COMPLETE (2026-07-10, session 3)
 
 Both firmwares build green from one `bazel` invocation each:

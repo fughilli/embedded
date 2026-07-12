@@ -31,7 +31,18 @@ filegroup(name = "ld_libs", srcs = ["sdk/esp32c6/flags/ld_libs"])
 # Prebuilt pieces needed to assemble a bootable flash image (see esptool_flash).
 filegroup(name = "bootloader_elf", srcs = ["sdk/esp32c6/bin/bootloader_qio_80m.elf"])
 
-filegroup(name = "partitions_default", srcs = ["tools/partitions/default.bin"])
+# Generate the partition table from the CSV like the IDE does. The repo's
+# shipped tools/partitions/default.bin is stale: old layout and no trailing MD5
+# row, which IDF >= 5 partition loading requires (load fails with 0x105).
+genrule(
+    name = "partitions_default",
+    srcs = ["tools/partitions/default.csv"],
+    outs = ["partitions_default.bin"],
+    cmd = "python3 $(location :gen_esp32part) -q $(location tools/partitions/default.csv) $@",
+    tools = [":gen_esp32part"],
+)
+
+filegroup(name = "gen_esp32part", srcs = ["tools/gen_esp32part.py"])
 
 filegroup(name = "boot_app0", srcs = ["tools/partitions/boot_app0.bin"])
 

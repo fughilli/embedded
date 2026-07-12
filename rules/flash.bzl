@@ -84,10 +84,13 @@ esptool_flash = rule(
             default = "@arduino_esp32//:boot_app0",
             allow_single_file = True,
         ),
-        "bootloader_offset": attr.string(default = "0x1000"),
-        "flash_mode": attr.string(default = "qio"),
-        "flash_freq": attr.string(default = "80m"),
-        "flash_size": attr.string(default = "4MB"),
+        # 0x0 on ESP32-C2/C3/C6/H2/S3; the original ESP32 and S2 use 0x1000.
+        "bootloader_offset": attr.string(default = "0x0"),
+        # "keep" = don't re-stamp the bootloader image header at write time;
+        # the header already carries the right mode/freq/size from elf2image.
+        "flash_mode": attr.string(default = "keep"),
+        "flash_freq": attr.string(default = "keep"),
+        "flash_size": attr.string(default = "keep"),
         "tool": attr.label(default = "@esptool//:bin", allow_single_file = True, cfg = "exec"),
         "tool_data": attr.label(default = "@esptool//:all", allow_files = True, cfg = "exec"),
         "_bash_runfiles": attr.label(default = "@bazel_tools//tools/bash/runfiles"),

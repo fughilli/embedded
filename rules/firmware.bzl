@@ -97,7 +97,9 @@ firmware_binary = rule(
             values = ["rp2350", "esp32c6"],
             doc = "Which board to build for (drives the transition + packager).",
         ),
-        "flash_mode": attr.string(default = "qio"),
+        # DIO in the image header even on QIO boards — the ROM boots in DIO and
+        # firmware upgrades to quad I/O itself (matches arduino-esp32).
+        "flash_mode": attr.string(default = "dio"),
         "flash_freq": attr.string(default = "80m"),
         "flash_size": attr.string(default = "4MB"),
         "_picotool": attr.label(
