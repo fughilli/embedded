@@ -19,3 +19,8 @@ alias(
     name = "webserver",
     actual = "@arduino_esp32//:webserver",
 )
+
+alias(
+    name = "partitions_no_ota",
+    actual = "@arduino_esp32//:partitions_no_ota",
+)

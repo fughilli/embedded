@@ -42,6 +42,18 @@ genrule(
     tools = [":gen_esp32part"],
 )
 
+# Single-app layout (no OTA slots): app0 grows to 0x200000 — for apps that
+# outgrow default.csv's 0x140000 slot (WiFi + webserver + FastLED + a
+# protocol stack lands around 1.5 MB). Same nvs/otadata/app0 offsets, so
+# esptool_flash needs only `partitions = ...` overridden.
+genrule(
+    name = "partitions_no_ota",
+    srcs = ["tools/partitions/no_ota.csv"],
+    outs = ["partitions_no_ota.bin"],
+    cmd = "python3 $(location :gen_esp32part) -q $(location tools/partitions/no_ota.csv) $@",
+    tools = [":gen_esp32part"],
+)
+
 filegroup(name = "gen_esp32part", srcs = ["tools/gen_esp32part.py"])
 
 filegroup(name = "boot_app0", srcs = ["tools/partitions/boot_app0.bin"])
