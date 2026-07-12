@@ -540,6 +540,24 @@ cc_library(
 )
 
 cc_library(
+    name = "ble",
+    srcs = glob(["libraries/BLE/src/**/*.cpp"], allow_empty = True),
+    hdrs = glob(["libraries/BLE/src/**/*.h"], allow_empty = True),
+    copts = _CXX_COPTS,
+    includes = ["libraries/BLE/src"],
+    deps = [":sdk_hdrs"],
+)
+
+cc_library(
+    name = "preferences",
+    srcs = glob(["libraries/Preferences/src/**/*.cpp"], allow_empty = True),
+    hdrs = glob(["libraries/Preferences/src/**/*.h"], allow_empty = True),
+    copts = _CXX_COPTS,
+    includes = ["libraries/Preferences/src"],
+    deps = [":sdk_hdrs"],
+)
+
+cc_library(
     name = "webserver",
     srcs = glob(["libraries/WebServer/src/**/*.cpp"], allow_empty = True),
     hdrs = glob(["libraries/WebServer/src/**/*.h"], allow_empty = True),

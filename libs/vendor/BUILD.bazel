@@ -24,3 +24,13 @@ alias(
     name = "partitions_no_ota",
     actual = "@arduino_esp32//:partitions_no_ota",
 )
+
+alias(
+    name = "ble",
+    actual = "@arduino_esp32//:ble",
+)
+
+alias(
+    name = "preferences",
+    actual = "@arduino_esp32//:preferences",
+)
