@@ -36,6 +36,6 @@ alias(
 )
 
 alias(
-    name = "partitions_default_8mb",
-    actual = "@arduino_esp32//:partitions_default_8mb",
+    name = "partitions_huge_app",
+    actual = "@arduino_esp32//:partitions_huge_app",
 )
