@@ -19,7 +19,9 @@
       "Bash(arduino-cli upload *)",
       "WebSearch",
       "Bash(networksetup -listallhardwareports)",
-      "Bash(networksetup -getairportnetwork en0)"
+      "Bash(networksetup -getairportnetwork en0)",
+      "Read(//Users/kevin/Projects/git_checkouts/embedded/bazel-bin/apps/wifi_ap/**)",
+      "Bash(git push *)"
     ]
   }
 }

@@ -10,6 +10,11 @@ with ping + curl from a laptop joined to the AP. New in this session:
   libraries `network`, `fs`, `wifi`, `hash`, `webserver` (same `_CXX_COPTS` as
   the core; deps mirror their #includes — WebServer needs `hash` for
   SHA1Builder.h, that's the only non-obvious edge).
+- `//rules:resources.bzl` `c_resource_library`: codegen (resource_gen.py)
+  that embeds resource files as NUL-terminated C const char arrays + header,
+  so pages live in real .html files. The wifi_ap page is now a styled color
+  picker webapp driving the onboard WS2812 via `/led?c=RRGGBB` ->
+  `rgbLedWrite`.
 
 Debugging traps burned into memory the hard way (nothing was actually broken):
 

@@ -1,12 +1,17 @@
-// WiFi smoke test: bring up a soft-AP and serve a static hello-world page.
+// WiFi smoke test: soft-AP + webserver with a color picker webapp (page.html,
+// embedded via c_resource_library) that drives the onboard WS2812 LED.
 // ESP32-C6 only (the RP2350 board here has no radio support wired up).
 //
-// Join the AP below, then browse to http://192.168.4.1/. Note: phones that
-// keep mobile data enabled may route around a WiFi network with no internet
-// and time out — test with mobile data off, or use a laptop.
+// Join the AP below, browse to http://192.168.4.1/, and pick a color. Note:
+// phones that keep mobile data enabled may route around a WiFi network with
+// no internet and time out — disable mobile data or accept the "no internet,
+// stay connected?" prompt.
 #include <Arduino.h>
 #include <WebServer.h>
 #include <WiFi.h>
+
+#include "apps/wifi_ap/page.h"
+#include "libs/pins/pins.h"
 
 static const char *kSsid = "esp32c6-hello";
 static const char *kPassword = "helloworld";
@@ -14,16 +19,24 @@ static const char *kPassword = "helloworld";
 static WebServer server(80);
 static bool ap_up = false;
 
-static const char kPage[] =
-    "<!DOCTYPE html><html><head><title>ESP32-C6</title></head>"
-    "<body><h1>Hello, world!</h1>"
-    "<p>Served by an ESP32-C6 built with Bazel.</p></body></html>";
+static void handle_led() {
+  String c = server.arg("c");
+  if (c.length() != 6) {
+    server.send(400, "text/plain", "want c=RRGGBB");
+    return;
+  }
+  uint32_t rgb = strtoul(c.c_str(), nullptr, 16);
+  rgbLedWrite(LED_DATA_PIN, (rgb >> 16) & 0xff, (rgb >> 8) & 0xff, rgb & 0xff);
+  server.send(200, "text/plain", "ok");
+}
 
 void setup() {
   Serial.begin(115200);
+  rgbLedWrite(LED_DATA_PIN, 0, 0, 0);
   ap_up = WiFi.softAP(kSsid, kPassword);
   if (ap_up) {
-    server.on("/", []() { server.send(200, "text/html", kPage); });
+    server.on("/", []() { server.send(200, "text/html", page_html); });
+    server.on("/led", handle_led);
     server.begin();
   }
 }
