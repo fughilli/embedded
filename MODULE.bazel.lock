@@ -420,10 +420,10 @@
         ]
       }
     },
-    "@@rules_nixpkgs_core~//extensions:package.bzl%nix_pkg": {
+    "@@rules_nixpkgs_core~//extensions:package.bzl%nix_pkg%<root>~nix_pkg": {
       "general": {
         "bzlTransitiveDigest": "2alEQC7q9PgrArc8ZeI662VmDHLGfuswqnzBJvVDnmg=",
-        "usagesDigest": "3878tMiuZULG5y8hIK++ApY5P1i1+1qtf1JYZpF2Eok=",
+        "usagesDigest": "PrTA+cmrQ0OWpDI/Q/gd06vxXpTnx/Naw1rdrv++UIs=",
         "recordedFileInputs": {},
         "recordedDirentsInputs": {},
         "envVariables": {},
@@ -436,7 +436,7 @@
               "attribute_path": "gcc-arm-embedded",
               "nix_file_deps": {},
               "nix_file_content": "",
-              "repository": "@@rules_nixpkgs_core~~nix_repo~nixpkgs//:nixpkgs",
+              "repository": "@@rules_nixpkgs_core~~_nix_repo~~~nix_repo~nixpkgs//:nixpkgs",
               "repositories": {},
               "build_file": "@@//nix:arm_gcc.BUILD",
               "build_file_content": "",
@@ -453,7 +453,7 @@
               "attribute_path": "picotool",
               "nix_file_deps": {},
               "nix_file_content": "",
-              "repository": "@@rules_nixpkgs_core~~nix_repo~nixpkgs//:nixpkgs",
+              "repository": "@@rules_nixpkgs_core~~_nix_repo~~~nix_repo~nixpkgs//:nixpkgs",
               "repositories": {},
               "build_file": "@@//nix:picotool.BUILD",
               "build_file_content": "",
@@ -470,7 +470,7 @@
               "attribute_path": "rust-cbindgen",
               "nix_file_deps": {},
               "nix_file_content": "",
-              "repository": "@@rules_nixpkgs_core~~nix_repo~nixpkgs//:nixpkgs",
+              "repository": "@@rules_nixpkgs_core~~_nix_repo~~~nix_repo~nixpkgs//:nixpkgs",
               "repositories": {},
               "build_file": "@@//nix:cbindgen.BUILD",
               "build_file_content": "",
@@ -487,7 +487,7 @@
               "attribute_path": "rust-bindgen",
               "nix_file_deps": {},
               "nix_file_content": "",
-              "repository": "@@rules_nixpkgs_core~~nix_repo~nixpkgs//:nixpkgs",
+              "repository": "@@rules_nixpkgs_core~~_nix_repo~~~nix_repo~nixpkgs//:nixpkgs",
               "repositories": {},
               "build_file": "@@//nix:bindgen_tool.BUILD",
               "build_file_content": "",
@@ -504,7 +504,7 @@
               "attribute_path": "clang",
               "nix_file_deps": {},
               "nix_file_content": "",
-              "repository": "@@rules_nixpkgs_core~~nix_repo~nixpkgs//:nixpkgs",
+              "repository": "@@rules_nixpkgs_core~~_nix_repo~~~nix_repo~nixpkgs//:nixpkgs",
               "repositories": {},
               "build_file": "@@//nix:clang.BUILD",
               "build_file_content": "",
@@ -521,7 +521,7 @@
               "attribute_path": "llvmPackages.libclang.lib",
               "nix_file_deps": {},
               "nix_file_content": "",
-              "repository": "@@rules_nixpkgs_core~~nix_repo~nixpkgs//:nixpkgs",
+              "repository": "@@rules_nixpkgs_core~~_nix_repo~~~nix_repo~nixpkgs//:nixpkgs",
               "repositories": {},
               "build_file": "@@//nix:libclang.BUILD",
               "build_file_content": "",
@@ -538,7 +538,7 @@
               "attribute_path": "esptool",
               "nix_file_deps": {},
               "nix_file_content": "",
-              "repository": "@@rules_nixpkgs_core~~nix_repo~nixpkgs//:nixpkgs",
+              "repository": "@@rules_nixpkgs_core~~_nix_repo~~~nix_repo~nixpkgs//:nixpkgs",
               "repositories": {},
               "build_file": "@@//nix:esptool.BUILD",
               "build_file_content": "",
@@ -558,7 +558,7 @@
                 "@@//nix:arduino_pico_drv.nix": "'@@//nix:arduino_pico_drv.nix'"
               },
               "nix_file_content": "",
-              "repository": "@@rules_nixpkgs_core~~nix_repo~nixpkgs//:nixpkgs",
+              "repository": "@@rules_nixpkgs_core~~_nix_repo~~~nix_repo~nixpkgs//:nixpkgs",
               "repositories": {},
               "build_file": "@@//nix:arduino_pico.BUILD",
               "build_file_content": "",
@@ -580,7 +580,7 @@
                 "@@//nix:esp_riscv_gcc.nix": "'@@//nix:esp_riscv_gcc.nix'"
               },
               "nix_file_content": "",
-              "repository": "@@rules_nixpkgs_core~~nix_repo~nixpkgs//:nixpkgs",
+              "repository": "@@rules_nixpkgs_core~~_nix_repo~~~nix_repo~nixpkgs//:nixpkgs",
               "repositories": {},
               "build_file": "@@//nix:riscv_gcc.BUILD",
               "build_file_content": "",
@@ -602,7 +602,7 @@
                 "@@//nix:esp_riscv_gcc.nix": "'@@//nix:esp_riscv_gcc.nix'"
               },
               "nix_file_content": "",
-              "repository": "@@rules_nixpkgs_core~~nix_repo~nixpkgs//:nixpkgs",
+              "repository": "@@rules_nixpkgs_core~~_nix_repo~~~nix_repo~nixpkgs//:nixpkgs",
               "repositories": {},
               "build_file": "@@//nix:arduino_esp32.BUILD",
               "build_file_content": "",
@@ -633,7 +633,7 @@
           [
             "",
             "nixpkgs",
-            "rules_nixpkgs_core~~nix_repo~nixpkgs"
+            "rules_nixpkgs_core~~_nix_repo~~~nix_repo~nixpkgs"
           ],
           [
             "rules_nixpkgs_core~",
@@ -647,6 +647,43 @@
       "general": {
         "bzlTransitiveDigest": "dTTtWNdwe7E4j77oKh1mHI1qtdxfaVSGSZa1oPf2QjU=",
         "usagesDigest": "4yGNcPiTxxmvvqKPk/4rXySo+Bsl72wqW58DrhJg49E=",
+        "recordedFileInputs": {},
+        "recordedDirentsInputs": {},
+        "envVariables": {},
+        "generatedRepoSpecs": {
+          "nixpkgs": {
+            "bzlFile": "@@rules_nixpkgs_core~//:nixpkgs.bzl",
+            "ruleClassName": "_nixpkgs_http_repository",
+            "attributes": {
+              "unmangled_name": "nixpkgs",
+              "url": "https://github.com/NixOS/nixpkgs/archive/b6018f87da91d19d0ab4cf979885689b469cdd41.tar.gz",
+              "strip_prefix": "nixpkgs-b6018f87da91d19d0ab4cf979885689b469cdd41",
+              "integrity": "",
+              "sha256": ""
+            }
+          }
+        },
+        "moduleExtensionMetadata": {
+          "explicitRootModuleDirectDeps": [
+            "nixpkgs"
+          ],
+          "explicitRootModuleDirectDevDeps": [],
+          "useAllRepos": "NO",
+          "reproducible": false
+        },
+        "recordedRepoMappingEntries": [
+          [
+            "rules_nixpkgs_core~",
+            "bazel_skylib",
+            "bazel_skylib~"
+          ]
+        ]
+      }
+    },
+    "@@rules_nixpkgs_core~//extensions:repository.bzl%nix_repo%<root>~nix_repo": {
+      "general": {
+        "bzlTransitiveDigest": "dTTtWNdwe7E4j77oKh1mHI1qtdxfaVSGSZa1oPf2QjU=",
+        "usagesDigest": "vXHz8up5kuFR/EX+U5zuhl1aG40R6JUHM80JFgqwKzw=",
         "recordedFileInputs": {},
         "recordedDirentsInputs": {},
         "envVariables": {},

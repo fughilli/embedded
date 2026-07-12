@@ -1,5 +1,30 @@
 # WORKLOG
 
+## ✅ ESP32-C6 WIFI AP + WEBSERVER ON HARDWARE (2026-07-12, session 5)
+
+`bazel run //apps/wifi_ap:flash_esp32c6`: soft-AP (`esp32c6-hello`) with a
+WebServer serving a static page at http://192.168.4.1/ — verified end-to-end
+with ping + curl from a laptop joined to the AP. New in this session:
+
+- `nix/arduino_esp32.BUILD`: cc_library targets for the bundled Arduino
+  libraries `network`, `fs`, `wifi`, `hash`, `webserver` (same `_CXX_COPTS` as
+  the core; deps mirror their #includes — WebServer needs `hash` for
+  SHA1Builder.h, that's the only non-obvious edge).
+
+Debugging traps burned into memory the hard way (nothing was actually broken):
+
+- **Phones with mobile data enabled route around a no-internet AP** and time
+  out loading the page, while laptops work fine. Test AP webservers with a
+  laptop, or disable mobile data / accept the "no internet — stay connected?"
+  prompt on the phone.
+- **On-device loopback TCP self-connect (to the AP's own IP) does not work**
+  in this lwIP port — fails identically on an Arduino-IDE-built control
+  binary. It is NOT evidence of a broken listener; don't chase it.
+- Control experiments via `arduino-cli` (brew-installed; uses the same
+  ~/Library/Arduino15 cores as the IDE) are cheap and decisive for "is it my
+  build system or the environment": same sketch, known-good toolchain, same
+  hardware. FQBN gotcha: add `:CDCOnBoot=cdc` or Serial goes to UART0 pins.
+
 ## ✅ ESP32-C6 RAINBOW RUNS ON HARDWARE (2026-07-11, session 4)
 
 `bazel run //apps/rainbow:flash_esp32c6` now produces a rainbow on the devkit's

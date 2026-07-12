@@ -485,6 +485,62 @@ cc_library(
     deps = [":sdk_hdrs"],
 )
 
+# Bundled Arduino libraries (beyond SPI, which rides along in the core above).
+# Each mirrors libraries/<X>/src. Header-only plumbing (esp32-hal, IDF) comes
+# from :sdk_hdrs; inter-library deps mirror their #includes.
+cc_library(
+    name = "network",
+    srcs = glob(["libraries/Network/src/**/*.cpp"], allow_empty = True),
+    hdrs = glob(["libraries/Network/src/**/*.h"], allow_empty = True),
+    includes = ["libraries/Network/src"],
+    copts = _CXX_COPTS,
+    deps = [":sdk_hdrs"],
+)
+
+cc_library(
+    name = "fs",
+    srcs = glob(["libraries/FS/src/**/*.cpp"], allow_empty = True),
+    hdrs = glob(["libraries/FS/src/**/*.h"], allow_empty = True),
+    includes = ["libraries/FS/src"],
+    copts = _CXX_COPTS,
+    deps = [":sdk_hdrs"],
+)
+
+cc_library(
+    name = "wifi",
+    srcs = glob(["libraries/WiFi/src/**/*.cpp"], allow_empty = True),
+    hdrs = glob(["libraries/WiFi/src/**/*.h"], allow_empty = True),
+    includes = ["libraries/WiFi/src"],
+    copts = _CXX_COPTS,
+    deps = [
+        ":network",
+        ":sdk_hdrs",
+    ],
+)
+
+cc_library(
+    name = "hash",
+    srcs = glob(["libraries/Hash/src/**/*.cpp"], allow_empty = True),
+    hdrs = glob(["libraries/Hash/src/**/*.h"], allow_empty = True),
+    includes = ["libraries/Hash/src"],
+    copts = _CXX_COPTS,
+    deps = [":sdk_hdrs"],
+)
+
+cc_library(
+    name = "webserver",
+    srcs = glob(["libraries/WebServer/src/**/*.cpp"], allow_empty = True),
+    hdrs = glob(["libraries/WebServer/src/**/*.h"], allow_empty = True),
+    includes = ["libraries/WebServer/src"],
+    copts = _CXX_COPTS,
+    deps = [
+        ":fs",
+        ":hash",
+        ":network",
+        ":sdk_hdrs",
+    ],
+)
+
 # The linkable core: carries the IDF link recipe (recipe.c.combine + ld_flags).
 cc_library(
     name = "core",
