@@ -27,13 +27,19 @@ _BOARD_PLATFORM = {
     "esp32c6": Label("//platforms:esp32c6"),
 }
 
-def _board_transition_impl(_settings, attr):
-    return {"//command_line_option:platforms": [str(_BOARD_PLATFORM[attr.board])]}
+def _board_transition_impl(settings, attr):
+    return {
+        "//command_line_option:platforms": [str(_BOARD_PLATFORM[attr.board])],
+        "//command_line_option:compilation_mode": attr.opt_mode or settings["//command_line_option:compilation_mode"],
+    }
 
 _board_transition = transition(
     implementation = _board_transition_impl,
-    inputs = [],
-    outputs = ["//command_line_option:platforms"],
+    inputs = ["//command_line_option:compilation_mode"],
+    outputs = [
+        "//command_line_option:platforms",
+        "//command_line_option:compilation_mode",
+    ],
 )
 
 def _firmware_binary_impl(ctx):
@@ -96,6 +102,11 @@ firmware_binary = rule(
             mandatory = True,
             values = ["rp2350", "esp32c6"],
             doc = "Which board to build for (drives the transition + packager).",
+        ),
+        "opt_mode": attr.string(
+            values = ["", "fastbuild", "dbg", "opt"],
+            doc = "Compilation mode for the transitioned binary; empty = " +
+                  "inherit the command-line -c setting.",
         ),
         # DIO in the image header even on QIO boards — the ROM boots in DIO and
         # firmware upgrades to quad I/O itself (matches arduino-esp32).
