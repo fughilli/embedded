@@ -229,3 +229,97 @@ register_toolchains(
     "//toolchains/cc/esp32c6:cc_toolchain",
     "//toolchains/cc/esp32:cc_toolchain",
 )
+
+# ---------------------------------------------------------------------------
+# Protobuf base support (shared across consumers — led_mapper, the UWB widget
+# repo): prebuilt protoc + the micropb no_std runtime + its host-side code
+# generator. Everything is ISOLATED so this module works identically as root
+# or as a dependency, with zero repo/feature collisions against whatever
+# crate universes the consumer defines. See //proto (aliases + macros).
+# ---------------------------------------------------------------------------
+bazel_dep(name = "toolchains_protoc", version = "0.6.1")
+bazel_dep(name = "rules_proto", version = "7.1.0")
+
+protoc = use_extension(
+    "@toolchains_protoc//protoc:extensions.bzl",
+    "protoc",
+    isolate = True,
+)
+protoc.toolchain(
+    google_protobuf = "com_google_protobuf",
+    version = "v29.3",
+)
+use_repo(
+    protoc,
+    protoc_linux_aarch64 = "toolchains_protoc_hub.linux_aarch_64",
+    protoc_linux_x86_64 = "toolchains_protoc_hub.linux_x86_64",
+    protoc_osx_aarch64 = "toolchains_protoc_hub.osx_aarch_64",
+    protoc_osx_x86_64 = "toolchains_protoc_hub.osx_x86_64",
+)
+
+# micropb runtime for firmware/host Rust: no_std, heapless containers.
+# 0.5.1 is the newest line whose generator builds on rustc 1.85.0
+# (micropb-gen 0.6 needs let-chains, MSRV 1.88) — keep runtime+gen locked.
+fw_proto_crate = use_extension(
+    "@rules_rust//crate_universe:extensions.bzl",
+    "crate",
+    isolate = True,
+)
+fw_proto_crate.spec(
+    default_features = False,
+    features = [
+        "encode",
+        "decode",
+        "enable-64bit",
+        "container-heapless",
+    ],
+    package = "micropb",
+    version = "0.5.1",
+)
+fw_proto_crate.spec(
+    default_features = False,
+    package = "heapless",
+    version = "0.8",
+)
+fw_proto_crate.from_specs(
+    name = "fw_proto_crates",
+    # Non-root crate universes must ship a lockfile (repinning does not work
+    # across module boundaries). Repin from THIS repo as root:
+    #   CARGO_BAZEL_REPIN=1 bazelisk query @fw_proto_crates//:micropb
+    lockfile = "//proto:fw_proto_crates-lock.json",
+    cargo_lockfile = "//proto:fw_proto_crates-Cargo.lock",
+    # rules_rust's default triple list is host-centric; restate it to EXTEND
+    # it with this module's bare-metal triples so @fw_proto_crates//:micropb
+    # resolves for the firmware platforms too.
+    supported_platform_triples = [
+        "aarch64-apple-darwin",
+        "aarch64-unknown-linux-gnu",
+        "wasm32-unknown-unknown",
+        "wasm32-wasip1",
+        "x86_64-pc-windows-msvc",
+        "x86_64-unknown-linux-gnu",
+        "thumbv8m.main-none-eabi",
+        "riscv32imac-unknown-none-elf",
+    ],
+)
+use_repo(fw_proto_crate, "fw_proto_crates")
+
+# HOST-side micropb code generator (build tool, not a firmware dep). Own
+# isolated universe: it needs micropb WITH std, and crate_universe unifies
+# features per crate within a universe — sharing one would leak std onto the
+# firmware micropb and break the bare-metal builds.
+fw_protogen_crate = use_extension(
+    "@rules_rust//crate_universe:extensions.bzl",
+    "crate",
+    isolate = True,
+)
+fw_protogen_crate.spec(
+    package = "micropb-gen",
+    version = "0.5.1",
+)
+fw_protogen_crate.from_specs(
+    name = "fw_protogen_crates",
+    lockfile = "//proto:fw_protogen_crates-lock.json",
+    cargo_lockfile = "//proto:fw_protogen_crates-Cargo.lock",
+)
+use_repo(fw_protogen_crate, "fw_protogen_crates")
