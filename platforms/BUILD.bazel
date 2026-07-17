@@ -22,6 +22,11 @@ constraint_value(
     constraint_setting = ":board",
 )
 
+constraint_value(
+    name = "esp32_board",
+    constraint_setting = ":board",
+)
+
 # RP2350 in Arm Cortex-M33 mode. cpu:armv8-m is exactly the Cortex-M33 profile
 # and is what rules_rust maps thumbv8m.main-none-eabihf to, so this single set
 # resolves BOTH the cc_toolchain and the Rust toolchain.
@@ -44,6 +49,19 @@ platform(
     ],
 )
 
+# Classic ESP32 / ESP32-WROOM (Xtensa LX6, dual core). @platforms//cpu has no
+# xtensa value, so the board constraint alone discriminates; that's fine because
+# no other registered toolchain matches os:none + esp32_board. (No Rust triple
+# either: upstream rustc has no Xtensa backend — Rust-linking apps stay off
+# this board.)
+platform(
+    name = "esp32",
+    constraint_values = [
+        "@platforms//os:none",
+        ":esp32_board",
+    ],
+)
+
 # config_settings so libraries can select() on the active board.
 config_setting(
     name = "is_rp2350",
@@ -53,4 +71,9 @@ config_setting(
 config_setting(
     name = "is_esp32c6",
     constraint_values = [":esp32c6_board"],
+)
+
+config_setting(
+    name = "is_esp32",
+    constraint_values = [":esp32_board"],
 )

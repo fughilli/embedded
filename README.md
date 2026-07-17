@@ -1,4 +1,4 @@
-# Firmware monorepo — ESP32-C6 + RP2350 on Bazel
+# Firmware monorepo — ESP32-C6 + ESP32 (WROOM) + RP2350 on Bazel
 
 Bare-metal firmware built with **Bazel (bzlmod)** using native `cc_library` /
 `cc_binary` rules. Cross toolchains, `picotool`/`esptool`, and Arduino core
@@ -6,9 +6,12 @@ sources are supplied by **Nix** (via `rules_nixpkgs`); Bazel drives the actual
 compile/link. **Rust** modules link into the firmware via `rules_rust` with
 bare-metal target triples.
 
-Status: **Both boards build green.** RP2350 (Arm Cortex-M33) → `.uf2`; ESP32-C6
-(RISC-V rv32imac) → `.bin`. Each links a `no_std` Rust module into the firmware.
-See `WORKLOG.md` for the build/verify commands and the integration notes.
+Status: **All three boards build green.** RP2350 (Arm Cortex-M33) → `.uf2`;
+ESP32-C6 (RISC-V rv32imac) and classic ESP32/WROOM (Xtensa LX6, dual core) →
+`.bin`. RP2350 and ESP32-C6 link a `no_std` Rust module into the firmware; the
+classic ESP32 substitutes a C++ fallback (upstream rustc has no Xtensa
+backend — that needs the esp-rs fork). See `WORKLOG.md` for the build/verify
+commands and the integration notes.
 
 ## Layout
 
@@ -17,7 +20,7 @@ See `WORKLOG.md` for the build/verify commands and the integration notes.
 | `.claude-container-overlay/Dockerfile` | Installs Nix + Bazelisk (needs container relaunch) |
 | `flake.nix`, `nix/` | Nix-provided toolchains + arduino-pico source; BUILD files exposing them |
 | `MODULE.bazel` | bzlmod: rule sets, Nix repos, Rust triples, toolchain registration |
-| `platforms/` | `board` constraint + `platform()` targets (rp2350, esp32c6) |
+| `platforms/` | `board` constraint + `platform()` targets (rp2350, esp32c6, esp32) |
 | `toolchains/cc/` | Reusable GCC-cross `cc_toolchain_config` + per-board `cc_toolchain` |
 | `rules/embedded.bzl` | `embedded_binary` rule: platform transition wrapping a cc_binary |
 | `rules/firmware.bzl` | `firmware_binary` rule: transition + package a cc_binary → board `.uf2`/`.bin` |
@@ -41,8 +44,11 @@ bazel build //:blink_rp2350                    # blink.uf2  (alias)
 # ESP32-C6 (RISC-V): ELF then flashable BIN
 bazel build //:blink_esp32c6                   # blink.bin  (alias)
 
-# FastLED rainbow chaser (64-LED strip) for either board
-bazel build //:rainbow_rp2350 //:rainbow_esp32c6
+# Classic ESP32 / ESP32-WROOM (Xtensa LX6): flashable BIN
+bazel build //:blink_esp32                     # blink.bin  (alias)
+
+# FastLED rainbow chaser (64-LED strip) for any board
+bazel build //:rainbow_rp2350 //:rainbow_esp32c6 //:rainbow_esp32
 ```
 
 ## Flashing a connected board
@@ -51,6 +57,7 @@ bazel build //:rainbow_rp2350 //:rainbow_esp32c6
 bazel run //apps/blink:flash_rp2350              # picotool load -x (board in BOOTSEL)
 bazel run //apps/blink:flash_esp32c6             # esptool write-flash (bootloader+parts+app)
 bazel run //apps/blink:flash_esp32c6 -- --port /dev/ttyACM0   # extra args pass through
+bazel run //apps/blink:flash_esp32               # classic ESP32/WROOM (bootloader at 0x1000)
 bazel run //apps/rainbow:flash_rp2350            # same targets exist for the rainbow app
 ```
 
@@ -127,10 +134,12 @@ host still needs only Bazelisk + Nix.
 
 Depending on `firmware` gives you graph-wide, with no extra wiring:
 
-- the registered **cc toolchains** (arm-none-eabi / riscv32-esp-elf), the
-  **Rust** bare-metal toolchains, and the **bindgen** toolchain;
-- the board **platforms** `@firmware//platforms:rp2350` and `:esp32c6` (plus the
-  `:is_rp2350` / `:is_esp32c6` `config_setting`s).
+- the registered **cc toolchains** (arm-none-eabi / riscv32-esp-elf /
+  xtensa-esp-elf), the **Rust** bare-metal toolchains, and the **bindgen**
+  toolchain;
+- the board **platforms** `@firmware//platforms:rp2350`, `:esp32c6`, and
+  `:esp32` (plus the `:is_rp2350` / `:is_esp32c6` / `:is_esp32`
+  `config_setting`s).
 
 You can also just build this repo's own targets from your workspace, e.g.
 `bazel build @firmware//:rainbow_esp32c6`.

@@ -1,7 +1,7 @@
 """`firmware_binary`: build a board-agnostic `cc_binary` for a specific board
 (via an outgoing platform transition) and package it into that board's flashable
-artifact — a `.uf2` for RP2350 (picotool) or an app `.bin` for ESP32-C6
-(esptool).
+artifact — a `.uf2` for RP2350 (picotool) or an app `.bin` for the ESP32 family
+(esptool; boards `esp32c6` and `esp32`, the classic Xtensa WROOM chip).
 
 This is a RULE, not a macro: every label it uses is either supplied by the
 caller (`binary`) or a private-attr default that resolves in THIS module's repo
@@ -25,6 +25,7 @@ The retargeted ELF is available via the `elf` output group.
 _BOARD_PLATFORM = {
     "rp2350": Label("//platforms:rp2350"),
     "esp32c6": Label("//platforms:esp32c6"),
+    "esp32": Label("//platforms:esp32"),
 }
 
 def _board_transition_impl(settings, attr):
@@ -63,11 +64,11 @@ def _firmware_binary_impl(ctx):
         args.add(elf)
         args.add(out)
         args.add("--family", "rp2350-arm-s")
-    else:  # esp32c6
+    else:  # esp32 family — the board name IS the esptool chip name
         out = ctx.actions.declare_file(ctx.label.name + ".bin")
         tool = ctx.file._esptool
         tool_files = ctx.attr._esptool_files[DefaultInfo].files
-        args.add("--chip", "esp32c6")
+        args.add("--chip", board)
         args.add("elf2image")
         args.add("--flash_mode", ctx.attr.flash_mode)
         args.add("--flash_freq", ctx.attr.flash_freq)
@@ -100,7 +101,7 @@ firmware_binary = rule(
         ),
         "board": attr.string(
             mandatory = True,
-            values = ["rp2350", "esp32c6"],
+            values = ["rp2350", "esp32c6", "esp32"],
             doc = "Which board to build for (drives the transition + packager).",
         ),
         "opt_mode": attr.string(

@@ -1,4 +1,4 @@
-# Blink for both boards. One board-agnostic cc_binary; firmware_binary retargets
+# Blink for all boards. One board-agnostic cc_binary; firmware_binary retargets
 # + packages it per board, and the flash rules run the tools.
 load("//rules:firmware.bzl", "firmware_binary")
 load("//rules:flash.bzl", "esptool_flash", "picotool_flash")
@@ -12,19 +12,34 @@ cc_binary(
     target_compatible_with = select({
         "//platforms:is_rp2350": [],
         "//platforms:is_esp32c6": [],
+        "//platforms:is_esp32": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     deps = [
         "//libs/board",  # board support + the Arduino core
-        "//rust/blink_timing",
         "//rust/blink_timing:header",
-    ],
+    ] + select({
+        # Classic ESP32 is Xtensa — no upstream Rust target — so it links the
+        # C++ fallback with the same header/ABI instead of the Rust crate.
+        "//platforms:is_esp32": ["//rust/blink_timing:blink_timing_fallback"],
+        "//conditions:default": ["//rust/blink_timing"],
+    }),
 )
 
 firmware_binary(name = "rp2350", binary = ":blink", board = "rp2350")  # -> rp2350.uf2
 
 firmware_binary(name = "esp32c6", binary = ":blink", board = "esp32c6")  # -> esp32c6.bin
 
+firmware_binary(name = "esp32", binary = ":blink", board = "esp32")  # -> esp32.bin
+
 picotool_flash(name = "flash_rp2350", uf2 = ":rp2350")
 
 esptool_flash(name = "flash_esp32c6", app = ":esp32c6")
+
+esptool_flash(
+    name = "flash_esp32",
+    app = ":esp32",
+    bootloader = "//libs/board:esp32_bootloader_bin",
+    bootloader_offset = "0x1000",  # classic ESP32 ROM loads from 0x1000, not 0x0
+    chip = "esp32",
+)

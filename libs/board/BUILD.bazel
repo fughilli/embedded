@@ -9,6 +9,7 @@ cc_library(
     deps = select({
         "//platforms:is_rp2350": ["@arduino_pico//:core"],
         "//platforms:is_esp32c6": ["@arduino_esp32//:core"],
+        "//platforms:is_esp32": ["@arduino_esp32//:core_esp32"],
     }),
 )
 
@@ -19,6 +20,7 @@ cc_library(
     srcs = select({
         "//platforms:is_rp2350": ["rp2350.cpp"],
         "//platforms:is_esp32c6": ["esp32c6.cpp"],
+        "//platforms:is_esp32": ["esp32.cpp"],
     }),
     hdrs = ["board.h"],
     # Full-path quote includes (`#include "libs/board/board.h"`) resolve against
@@ -39,5 +41,17 @@ genrule(
     cmd = ("$(execpath @esptool//:bin) --chip esp32c6 elf2image " +
            "--flash_mode dio --flash_freq 80m --flash_size 4MB " +
            "-o $@ $(location @arduino_esp32//:bootloader_elf)"),
+    tools = ["@esptool//:bin", "@esptool//:all"],
+)
+
+# Classic ESP32 (WROOM) second-stage bootloader. Same QIO-built/DIO-header
+# arrangement as the C6; this chip's ROM loads it from 0x1000, not 0x0.
+genrule(
+    name = "esp32_bootloader_bin",
+    srcs = ["@arduino_esp32//:bootloader_elf_esp32"],
+    outs = ["esp32_bootloader.bin"],
+    cmd = ("$(execpath @esptool//:bin) --chip esp32 elf2image " +
+           "--flash_mode dio --flash_freq 80m --flash_size 4MB " +
+           "-o $@ $(location @arduino_esp32//:bootloader_elf_esp32)"),
     tools = ["@esptool//:bin", "@esptool//:all"],
 )

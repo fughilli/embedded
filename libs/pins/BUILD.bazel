@@ -2,7 +2,7 @@
 # NUM_LEDS (strip length) is board-independent and lives in pins.h.
 #
 # Pins are placeholders — change them to match your wiring:
-#   RP2350 (Pico 2): GPIO 2      ESP32-C6: GPIO 8
+#   RP2350 (Pico 2): GPIO 2      ESP32-C6: GPIO 8      ESP32 (WROOM): GPIO 4
 package(default_visibility = ["//visibility:public"])
 
 cc_library(
@@ -11,5 +11,6 @@ cc_library(
     defines = select({
         "//platforms:is_rp2350": ["LED_DATA_PIN=2"],
         "//platforms:is_esp32c6": ["LED_DATA_PIN=8"],
+        "//platforms:is_esp32": ["LED_DATA_PIN=4"],
     }),
 )

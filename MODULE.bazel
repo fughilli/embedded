@@ -127,14 +127,33 @@ nix_pkg.file(
         "//nix:arduino_esp32_drv.nix",
         "//nix:esp32_arduino_libs.nix",
         "//nix:esp_riscv_gcc.nix",
+        "//nix:esp_xtensa_gcc.nix",
     ],
     attr = "riscv32-esp-elf",
     repo = "@nixpkgs",
     build_file = "//nix:riscv_gcc.BUILD",
 )
 
-# arduino-esp32 core merged with the esp32c6 prebuilt SDK (esp32-arduino-libs)
-# into one tree at sdk/esp32c6. Carries cc_library(core) — see arduino_esp32.BUILD.
+# Espressif prebuilt xtensa-esp-elf GCC (same esp-14.2.0_20260121 release) —
+# classic ESP32 / ESP32-WROOM (Xtensa LX6). No Rust triple for this one:
+# upstream rustc has no Xtensa backend (that needs the esp-rs fork).
+nix_pkg.file(
+    name = "xtensa_gcc",
+    file = "//nix:arduino_esp32.nix",
+    file_deps = [
+        "//nix:arduino_esp32_drv.nix",
+        "//nix:esp32_arduino_libs.nix",
+        "//nix:esp_riscv_gcc.nix",
+        "//nix:esp_xtensa_gcc.nix",
+    ],
+    attr = "xtensa-esp-elf",
+    repo = "@nixpkgs",
+    build_file = "//nix:xtensa_gcc.BUILD",
+)
+
+# arduino-esp32 core merged with the per-chip prebuilt SDKs (esp32-arduino-libs)
+# into one tree at sdk/<chip> (esp32c6, esp32). Carries the per-chip
+# cc_library(core) targets — see arduino_esp32.BUILD.
 nix_pkg.file(
     name = "arduino_esp32",
     file = "//nix:arduino_esp32.nix",
@@ -142,6 +161,7 @@ nix_pkg.file(
         "//nix:arduino_esp32_drv.nix",
         "//nix:esp32_arduino_libs.nix",
         "//nix:esp_riscv_gcc.nix",
+        "//nix:esp_xtensa_gcc.nix",
     ],
     attr = "arduino-esp32",
     repo = "@nixpkgs",
@@ -159,6 +179,7 @@ use_repo(
     "libclang",
     "esptool",
     "riscv_gcc",
+    "xtensa_gcc",
     "arduino_esp32",
 )
 
@@ -206,4 +227,5 @@ register_toolchains(
     "//toolchains/bindgen:bindgen_toolchain",
     "//toolchains/cc/rp2350_arm:cc_toolchain",
     "//toolchains/cc/esp32c6:cc_toolchain",
+    "//toolchains/cc/esp32:cc_toolchain",
 )

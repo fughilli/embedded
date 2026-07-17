@@ -1,5 +1,41 @@
 # WORKLOG
 
+## ✅ CLASSIC ESP32 / WROOM (XTENSA) BUILDS GREEN (2026-07-17, session 6)
+
+`bazel build //:blink_esp32 //:rainbow_esp32` → valid ESP32 images (esptool
+image-info: chip ESP32, DIO/80m/4MB, entry 0x400819a8; blink text 207K).
+Third board (`esp32`) added end-to-end: platform + constraint, xtensa
+cc_toolchain, per-chip SDK slice + core targets, flash targets. All C6/RP2350
+targets rebuilt green alongside. NOT yet run on hardware — flash script
+verified only for correct chip/offsets (0x1000 bootloader, 0x8000 partitions,
+0xe000 boot_app0, 0x10000 app).
+
+What made the xtensa wiring different from the C6 (for the next chip):
+
+- **Toolchain selection is -mdynconfig, not -march/-mcpu.** The unified
+  `xtensa-esp-elf` tarball (same esp-14.2.0_20260121 release as the riscv one)
+  ships per-chip wrapper binaries `xtensa-esp32-elf-*` that bake in
+  `-mdynconfig=xtensa_esp32.so`; `nix/xtensa_gcc.BUILD` points at those, so no
+  arch flag is needed anywhere. Arch quirk flags that DO matter (from
+  `flags/c_flags`): `-mlongcalls -mdisable-hardware-atomics
+  -mfix-esp32-psram-cache-issue -mfix-esp32-psram-cache-strategy=memw`.
+- **@arduino_esp32 is now per-chip**: sdk/esp32 merged alongside sdk/esp32c6
+  (nix/arduino_esp32_drv.nix), `*_esp32`-suffixed targets in
+  arduino_esp32.BUILD (include list generated from `sdk/esp32/flags/includes`,
+  minus 2 entries that don't exist on disk). Extra SDK archives live in `ld/`
+  again (libphy.a, librtc.a, libbtdm_app.a).
+- **No upstream Rust for Xtensa** (esp-rs fork only). `//apps/blink` select()s
+  `//rust/blink_timing:blink_timing_fallback` (C++, same cbindgen header/ABI)
+  on `is_esp32`; the cbindgen header target itself is host-generated and
+  board-independent, so it stays a common dep.
+- Classic-ESP32 facts: bootloader offset **0x1000** (C6 is 0x0); IDE defaults
+  QIO/80MHz → memory-type dir `qio_qspi`, image headers still DIO (same
+  ROM-boots-DIO remap as the C6); no native USB → `ARDUINO_USB_CDC_ON_BOOT=0`,
+  no `ARDUINO_USB_MODE`; Serial is UART0; variant defines no LED_BUILTIN
+  (libs/board/esp32.cpp uses GPIO 2, the usual devkit LED).
+- Hash TODOs in nix/esp_xtensa_gcc.nix: x86_64-linux and aarch64-darwin are
+  fakeHash placeholders (aarch64-linux is real); fill on first use.
+
 ## ✅ ESP32-C6 WIFI AP + WEBSERVER ON HARDWARE (2026-07-12, session 5)
 
 `bazel run //apps/wifi_ap:flash_esp32c6`: soft-AP (`esp32c6-hello`) with a

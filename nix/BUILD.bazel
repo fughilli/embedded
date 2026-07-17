@@ -16,6 +16,9 @@ exports_files([
     "arduino_esp32_drv.nix",
     "esp_riscv_gcc.nix",
     "esp32_arduino_libs.nix",
+    # ESP32 classic / WROOM (Xtensa LX6)
+    "xtensa_gcc.BUILD",
+    "esp_xtensa_gcc.nix",
     # interop tooling
     "cbindgen.BUILD",
     "bindgen_tool.BUILD",
