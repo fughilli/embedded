@@ -39,3 +39,13 @@ alias(
     name = "partitions_huge_app",
     actual = "@arduino_esp32//:partitions_huge_app",
 )
+
+alias(
+    name = "network_esp32",
+    actual = "@arduino_esp32//:network_esp32",
+)
+
+alias(
+    name = "wifi_esp32",
+    actual = "@arduino_esp32//:wifi_esp32",
+)

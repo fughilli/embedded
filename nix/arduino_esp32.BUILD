@@ -1080,3 +1080,26 @@ cc_library(
     ],
     deps = [":core_c_esp32", ":core_cpp_esp32", ":sdk_hdrs_esp32"],
 )
+
+# Bundled Arduino libraries for the classic ESP32 — same sources as the C6
+# targets above, rebuilt against sdk/esp32 headers with the Xtensa copts.
+cc_library(
+    name = "network_esp32",
+    srcs = glob(["libraries/Network/src/**/*.cpp"], allow_empty = True),
+    hdrs = glob(["libraries/Network/src/**/*.h"], allow_empty = True),
+    includes = ["libraries/Network/src"],
+    copts = _CXX_COPTS_ESP32,
+    deps = [":sdk_hdrs_esp32"],
+)
+
+cc_library(
+    name = "wifi_esp32",
+    srcs = glob(["libraries/WiFi/src/**/*.cpp"], allow_empty = True),
+    hdrs = glob(["libraries/WiFi/src/**/*.h"], allow_empty = True),
+    includes = ["libraries/WiFi/src"],
+    copts = _CXX_COPTS_ESP32,
+    deps = [
+        ":network_esp32",
+        ":sdk_hdrs_esp32",
+    ],
+)
