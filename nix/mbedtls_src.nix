@@ -12,8 +12,8 @@
 # Layout in $out:
 #   mbedtls/{library,include,3rdparty}   (upstream mbedtls)
 #   port/**                              (IDF components/mbedtls/port)
-pkgs:
 let
+  pkgs = import <nixpkgs> { };
   mbedtls = pkgs.fetchFromGitHub {
     owner = "espressif";
     repo = "mbedtls";
