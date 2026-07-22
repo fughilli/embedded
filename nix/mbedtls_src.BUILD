@@ -28,14 +28,20 @@ _MBEDTLS_COPTS = [
 ]
 
 # mbedtls core (library/*.c) + 3rdparty ECC (everest, p256-m).
+# Everest: compile ONLY the 3 files mbedtls' 3rdparty/everest/CMakeLists.txt
+# lists. Hacl_Curve25519_joined.c #includes Hacl_Curve25519.c (and the
+# kremlib/legacy .c files), so globbing library/*.c would double-define them.
 _MBEDTLS_CORE = glob(
     [
         "mbedtls/library/*.c",
-        "mbedtls/3rdparty/everest/library/*.c",
         "mbedtls/3rdparty/p256-m/**/p256-m.c",
     ],
     allow_empty = False,
-)
+) + [
+    "mbedtls/3rdparty/everest/library/everest.c",
+    "mbedtls/3rdparty/everest/library/x25519.c",
+    "mbedtls/3rdparty/everest/library/Hacl_Curve25519_joined.c",
+]
 
 # ESP-IDF port sources selected for the C6.
 _PORT_SRCS = [
@@ -102,6 +108,10 @@ cc_library(
         "mbedtls/include",
         "mbedtls/library",
         "mbedtls/3rdparty/everest/include",
+        # everest sources #include "Hacl_Curve25519.h" / kremlib headers by
+        # bare name; its CMakeLists adds these two as private include dirs.
+        "mbedtls/3rdparty/everest/include/everest",
+        "mbedtls/3rdparty/everest/include/everest/kremlib",
         "mbedtls/3rdparty/p256-m",
     ],
     copts = _MBEDTLS_COPTS,
