@@ -19,11 +19,21 @@ genrule(
            "echo \"-L$$(dirname $(location sdk/esp32c6/qio_qspi/libspi_flash.a))\" >> $@"),
 )
 
-filegroup(name = "sdk_libs", srcs = glob([
-    "sdk/esp32c6/lib/*.a",
-    "sdk/esp32c6/qio_qspi/*.a",
-    "sdk/esp32c6/ld/*.a",  # libphy.a, libbtbb.a live alongside the ld scripts
-]))
+filegroup(name = "sdk_libs", srcs = glob(
+    [
+        "sdk/esp32c6/lib/*.a",
+        "sdk/esp32c6/qio_qspi/*.a",
+        "sdk/esp32c6/ld/*.a",  # libphy.a, libbtbb.a live alongside the ld scripts
+    ],
+    # mbedtls is built FROM SOURCE (@mbedtls_src, with dynamic buffers) and linked
+    # into :core instead — drop the prebuilt archives so our symbols win.
+    exclude = [
+        "sdk/esp32c6/lib/libmbedtls.a",
+        "sdk/esp32c6/lib/libmbedtls_2.a",
+        "sdk/esp32c6/lib/libmbedcrypto.a",
+        "sdk/esp32c6/lib/libmbedx509.a",
+    ],
+))
 filegroup(name = "sdk_ld", srcs = glob(["sdk/esp32c6/ld/*.ld"]))
 filegroup(name = "ld_flags", srcs = ["sdk/esp32c6/flags/ld_flags"])
 filegroup(name = "ld_scripts", srcs = ["sdk/esp32c6/flags/ld_scripts"])
@@ -599,12 +609,28 @@ cc_library(
         "-Wl,--wrap=esp_panic_handler",
         "-Wl,--wrap=esp_bt_mem_release",
         "-Wl,--wrap=esp_bt_controller_mem_release",
+        # Dynamic-buffer wraps — route the ssl entrypoints through the
+        # port/dynamic/*.c shims in @mbedtls_src (__real_* resolve from our
+        # from-source mbedtls). Keep in sync with mbedtls_src.BUILD.
+        "-Wl,--wrap=mbedtls_ssl_write_client_hello",
+        "-Wl,--wrap=mbedtls_ssl_handshake_client_step",
+        "-Wl,--wrap=mbedtls_ssl_tls13_handshake_client_step",
+        "-Wl,--wrap=mbedtls_ssl_handshake_server_step",
+        "-Wl,--wrap=mbedtls_ssl_read",
+        "-Wl,--wrap=mbedtls_ssl_write",
+        "-Wl,--wrap=mbedtls_ssl_session_reset",
+        "-Wl,--wrap=mbedtls_ssl_free",
+        "-Wl,--wrap=mbedtls_ssl_setup",
+        "-Wl,--wrap=mbedtls_ssl_send_alert_message",
+        "-Wl,--wrap=mbedtls_ssl_close_notify",
         "-Wl,--start-group",
         "@$(location :ld_libs)",
         "-Wl,--end-group",
         "-Wl,-EL",
     ],
-    deps = [":core_c", ":core_cpp", ":sdk_hdrs"],
+    # From-source mbedtls (alwayslink) satisfies the precompiled esp-tls /
+    # esp_https_server callers; placed ahead of the prebuilt --start-group block.
+    deps = [":core_c", ":core_cpp", ":sdk_hdrs", "@mbedtls_src//:mbedtls_src"],
 )
 
 # ===========================================================================

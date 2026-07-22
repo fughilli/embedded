@@ -95,6 +95,17 @@ nix_pkg.file(
     build_file = "//nix:arduino_pico.BUILD",
 )
 
+# mbedtls 3.6.5 + ESP-IDF v5.5.4 port, built FROM SOURCE for the esp32c6 with
+# CONFIG_MBEDTLS_DYNAMIC_BUFFER (see nix/mbedtls_src.nix + nix/mbedtls_src.BUILD).
+# Replaces the prebuilt mbedtls .a's in arduino_esp32.BUILD's :core.
+nix_pkg.file(
+    name = "mbedtls_src",
+    file = "//nix:mbedtls_src.nix",
+    attr = "mbedtls-src",
+    repo = "@nixpkgs",
+    build_file = "//nix:mbedtls_src.BUILD",
+)
+
 # cbindgen (Rust -> C/C++ headers) — used by //rules:cbindgen.bzl.
 nix_pkg.attr(
     name = "cbindgen",
@@ -181,6 +192,7 @@ use_repo(
     "riscv_gcc",
     "xtensa_gcc",
     "arduino_esp32",
+    "mbedtls_src",
 )
 
 # ---------------------------------------------------------------------------
