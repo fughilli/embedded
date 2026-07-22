@@ -37,7 +37,20 @@ filegroup(name = "sdk_libs", srcs = glob(
 filegroup(name = "sdk_ld", srcs = glob(["sdk/esp32c6/ld/*.ld"]))
 filegroup(name = "ld_flags", srcs = ["sdk/esp32c6/flags/ld_flags"])
 filegroup(name = "ld_scripts", srcs = ["sdk/esp32c6/flags/ld_scripts"])
-filegroup(name = "ld_libs", srcs = ["sdk/esp32c6/flags/ld_libs"])
+
+# The SDK's ld_libs names -lmbedtls/-lmbedtls_2/-lmbedcrypto/-lmbedx509, but we
+# dropped those .a's from :sdk_libs (mbedtls is built from source in
+# @mbedtls_src, linked via :core's deps). Strip those 4 -l tokens so ld doesn't
+# fail with "cannot find -lmbedtls"; the from-source lib satisfies the refs.
+genrule(
+    name = "ld_libs_no_mbedtls",
+    srcs = ["sdk/esp32c6/flags/ld_libs"],
+    outs = ["ld_libs.filtered"],
+    cmd = ("sed -E 's/-lmbedtls_2( |$$)/ /g; s/-lmbedtls( |$$)/ /g; " +
+           "s/-lmbedcrypto( |$$)/ /g; s/-lmbedx509( |$$)/ /g' $< > $@"),
+)
+
+filegroup(name = "ld_libs", srcs = [":ld_libs.filtered"])
 
 # Prebuilt pieces needed to assemble a bootable flash image (see esptool_flash).
 filegroup(name = "bootloader_elf", srcs = ["sdk/esp32c6/bin/bootloader_qio_80m.elf"])
