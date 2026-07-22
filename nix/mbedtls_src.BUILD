@@ -53,6 +53,9 @@ _PORT_SRCS = [
     "port/esp_mem.c",
     "port/esp_timing.c",
     "port/esp_hmac_pbkdf2.c",
+    # MD5 ROM implementation — MBEDTLS_MD5_ALT is set via CONFIG_MBEDTLS_ROM_MD5
+    # in the SDK sdkconfig, so md.c/md5.c call esp_md5_* from here.
+    "port/md/esp_md.c",
     # SHA (core / GDMA)
     "port/sha/esp_sha.c",
     "port/sha/core/sha.c",
