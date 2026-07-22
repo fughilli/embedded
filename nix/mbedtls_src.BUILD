@@ -89,16 +89,20 @@ cc_library(
         "mbedtls/3rdparty/**/*.h",
         "port/**/*.h",
     ]),
-    # Our own mbedtls + port headers first; esp_config.h lives in port/include.
+    # Port include dirs MUST precede mbedtls/include: the port ships wrapper
+    # headers (e.g. mbedtls/bignum.h, mbedtls/gcm.h, mbedtls/ecp.h) that
+    # `#include_next` the upstream ones to add ESP-only prototypes such as
+    # mbedtls_mpi_exp_mod_soft. For #include_next to see the upstream header,
+    # the port's mbedtls/ dir must come first on the -I search path.
     includes = [
-        "mbedtls/include",
-        "mbedtls/library",
-        "mbedtls/3rdparty/everest/include",
-        "mbedtls/3rdparty/p256-m",
         "port/include",
         "port/aes/include",
         "port/aes/dma/include",
         "port/sha/core/include",
+        "mbedtls/include",
+        "mbedtls/library",
+        "mbedtls/3rdparty/everest/include",
+        "mbedtls/3rdparty/p256-m",
     ],
     copts = _MBEDTLS_COPTS,
     # Our symbols must satisfy the precompiled esp-tls/https_server callers.
