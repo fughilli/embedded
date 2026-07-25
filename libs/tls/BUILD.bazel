@@ -1,0 +1,20 @@
+# On-device self-signed cert (re)issuance helper. Compiled against the ledmapper
+# mbedtls config (which enables the pruned X.509/PK/PEM writers); exposes a
+# plain-C API so the firmware needn't see the writer headers. See selfsigned.h.
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+cc_library(
+    name = "selfsigned",
+    srcs = ["selfsigned.c"],
+    hdrs = ["selfsigned.h"],
+    # Same wrapper config as :mbedtls_src, so the x509write_* declarations are
+    # visible here (the ssl-context ABI is unchanged — writers are additive).
+    copts = ["-DMBEDTLS_CONFIG_FILE=\\\"mbedtls/esp_config_ledmapper.h\\\""],
+    includes = ["."],
+    deps = [
+        "@arduino_esp32//:sdk_hdrs",
+        "@mbedtls_src//:mbedtls_src",
+    ],
+)

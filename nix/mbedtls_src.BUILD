@@ -20,10 +20,12 @@ _MBEDTLS_COPTS = [
     "-fno-tree-switch-conversion",
     "-std=gnu17",
     "-w",
-    # Config: use the ESP port's mbedtls config; enable dynamic buffers. The
-    # SDK's sdkconfig.h (on the include path via @arduino_esp32//:sdk_hdrs) does
-    # not define CONFIG_MBEDTLS_DYNAMIC_BUFFER, so -D here is the only change.
-    "-DMBEDTLS_CONFIG_FILE=\\\"mbedtls/esp_config.h\\\"",
+    # Config: a thin wrapper (:ledmapper_mbedtls_config) that includes the ESP
+    # port's esp_config.h and then shrinks the TLS record length (see genrule);
+    # enable dynamic buffers. The SDK's sdkconfig.h (on the include path via
+    # @arduino_esp32//:sdk_hdrs) does not define CONFIG_MBEDTLS_DYNAMIC_BUFFER, so
+    # -D here is the only change.
+    "-DMBEDTLS_CONFIG_FILE=\\\"mbedtls/esp_config_ledmapper.h\\\"",
     "-DCONFIG_MBEDTLS_DYNAMIC_BUFFER=1",
 ]
 
@@ -89,6 +91,46 @@ _PORT_SRCS = [
     "port/dynamic/esp_ssl_tls.c",
 ]
 
+# Wrapper mbedtls config: include the ESP port config, then shrink the TLS
+# record length 16 KB -> 8 KB. On the C6 the per-handshake dynamic buffer alloc
+# (~17 KB contiguous) was failing (-0x7F00 / "alloc(17058) failed") in a
+# fragmented heap even with ~27 KB free; an 8 KB record needs only ~8.7 KB
+# contiguous. A -D can't do this (esp_config.h aliases the macro to the
+# CONFIG_ value from sdkconfig.h, which wins), so override AFTER including it.
+# DYNAMIC_BUFFER keeps the record buffer off the ssl-context struct, so the
+# smaller length is ABI-safe vs the prebuilt esp-tls / esp_https_server. Our
+# largest message (a ~4 KB 256-LED submit_map) stays well under 8 KB.
+genrule(
+    name = "ledmapper_mbedtls_config",
+    outs = ["cfg/mbedtls/esp_config_ledmapper.h"],
+    cmd = """cat > $@ <<'HDR'
+#include "mbedtls/esp_config.h"
+#undef MBEDTLS_SSL_MAX_CONTENT_LEN
+#define MBEDTLS_SSL_MAX_CONTENT_LEN 8192
+#undef MBEDTLS_SSL_IN_CONTENT_LEN
+#define MBEDTLS_SSL_IN_CONTENT_LEN 8192
+#undef MBEDTLS_SSL_OUT_CONTENT_LEN
+#define MBEDTLS_SSL_OUT_CONTENT_LEN 8192
+/* On-device self-signed cert (re)issuance needs the X.509/PK/PEM writers, which
+   the ESP config prunes. Purely additive (new writer functions + a separate
+   mbedtls_x509write_cert struct we own); no ssl-context struct changes, so
+   ABI-safe against the prebuilt esp-tls / esp_https_server. */
+#ifndef MBEDTLS_X509_CREATE_C
+#define MBEDTLS_X509_CREATE_C
+#endif
+#ifndef MBEDTLS_X509_CRT_WRITE_C
+#define MBEDTLS_X509_CRT_WRITE_C
+#endif
+#ifndef MBEDTLS_PK_WRITE_C
+#define MBEDTLS_PK_WRITE_C
+#endif
+#ifndef MBEDTLS_PEM_WRITE_C
+#define MBEDTLS_PEM_WRITE_C
+#endif
+HDR
+""",
+)
+
 cc_library(
     name = "mbedtls_src",
     srcs = _MBEDTLS_CORE + _PORT_SRCS,
@@ -97,13 +139,15 @@ cc_library(
         "mbedtls/library/*.h",
         "mbedtls/3rdparty/**/*.h",
         "port/**/*.h",
-    ]),
+    ]) + [":ledmapper_mbedtls_config"],
     # Port include dirs MUST precede mbedtls/include: the port ships wrapper
     # headers (e.g. mbedtls/bignum.h, mbedtls/gcm.h, mbedtls/ecp.h) that
     # `#include_next` the upstream ones to add ESP-only prototypes such as
     # mbedtls_mpi_exp_mod_soft. For #include_next to see the upstream header,
     # the port's mbedtls/ dir must come first on the -I search path.
     includes = [
+        # Generated wrapper config dir (holds mbedtls/esp_config_ledmapper.h).
+        "cfg",
         "port/include",
         "port/aes/include",
         "port/aes/dma/include",
