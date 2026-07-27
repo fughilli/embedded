@@ -3,8 +3,6 @@
 # rather than via the nixpkgs-esp-dev flake (which drags in all of ESP-IDF).
 #
 # Tarball is selected by host platform; macOS Mach-O binaries need no patching.
-# TODO(build): fill in the x86_64-linux hash on first use (`nix store
-# prefetch-file <url>`).
 pkgs:
 let
   version = "14.2.0_20260121";
@@ -15,7 +13,7 @@ let
     };
     x86_64-linux = {
       triple = "x86_64-linux-gnu";
-      hash = pkgs.lib.fakeHash;
+      hash = "sha256-G3lhf0PPDiW5JkY1nRYj2L7xNQUKykRYbfWbamRJbYI=";
     };
     aarch64-darwin = {
       triple = "aarch64-apple-darwin";

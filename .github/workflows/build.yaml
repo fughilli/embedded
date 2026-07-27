@@ -1,0 +1,37 @@
+name: Build
+on:
+  pull_request:
+  push:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup repository
+        uses: actions/checkout@v4
+
+      # Nix provides the ESP32-C6 / RP2350 toolchains + Arduino cores (see
+      # MODULE.bazel / nix/). `bazel build` realizes them on first use, so the
+      # x86_64-linux runner exercises the x86_64 toolchain fetch — the leg that
+      # host (aarch64 / darwin) dev never hits.
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+
+      - name: Setup Bazel
+        uses: bazel-contrib/setup-bazel@0.15.0
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}
+          repository-cache: true
+
+      # Build one firmware image per board family so the riscv (ESP32-C6) and
+      # arm (RP2350) cross toolchains are both realized and compile/link cleanly.
+      - name: Build firmware images
+        run: |
+          bazel build -c opt \
+            //apps/blink:esp32c6 //apps/rainbow:esp32c6 //apps/wifi_ap:esp32c6 \
+            //apps/blink:rp2350 //apps/rainbow:rp2350
+
+      - name: Test
+        run: bazel test //... --test_output=errors
