@@ -56,7 +56,7 @@ jobs:
       # arm (RP2350) cross toolchains are both realized and compile/link cleanly.
       - name: Build firmware images
         run: |
-          bazel build -c opt --disk_cache=~/.cache/bazel-disk \
+          bazel build -c opt --disk_cache="$HOME/.cache/bazel-disk" \
             //apps/blink:esp32c6 //apps/rainbow:esp32c6 //apps/wifi_ap:esp32c6 \
             //apps/blink:rp2350 //apps/rainbow:rp2350
 
@@ -65,5 +65,5 @@ jobs:
       # workflow stays green if the host-test set is ever empty under CI's platform.
       - name: Test
         run: |
-          bazel test //... --build_tests_only --disk_cache=~/.cache/bazel-disk --test_output=errors \
+          bazel test //... --build_tests_only --disk_cache="$HOME/.cache/bazel-disk" --test_output=errors \
             || { rc=$?; [ "$rc" -eq 4 ] && echo "::notice::no test targets matched" || exit "$rc"; }
