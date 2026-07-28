@@ -38,14 +38,25 @@ jobs:
         uses: bazel-contrib/setup-bazel@0.15.0
         with:
           bazelisk-cache: true
-          disk-cache: ${{ github.workflow }}
           repository-cache: true
+
+      # Bazel's *disk cache* (compiled action outputs) is the real cost here: the
+      # mbedtls / Arduino-core / app cc_library compiles dominate, and setup-bazel
+      # wasn't persisting them. Cache the disk cache explicitly. Keyed on the
+      # toolchain inputs so the (invariant) mbedtls/core objects stay cached
+      # across commits; restore-keys falls back to the latest on a miss.
+      - name: Cache Bazel disk cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/bazel-disk
+          key: bazel-disk-${{ runner.os }}-${{ hashFiles('flake.lock', 'MODULE.bazel.lock') }}
+          restore-keys: bazel-disk-${{ runner.os }}-
 
       # Build one firmware image per board family so the riscv (ESP32-C6) and
       # arm (RP2350) cross toolchains are both realized and compile/link cleanly.
       - name: Build firmware images
         run: |
-          bazel build -c opt \
+          bazel build -c opt --disk_cache=~/.cache/bazel-disk \
             //apps/blink:esp32c6 //apps/rainbow:esp32c6 //apps/wifi_ap:esp32c6 \
             //apps/blink:rp2350 //apps/rainbow:rp2350
 
@@ -54,5 +65,5 @@ jobs:
       # workflow stays green if the host-test set is ever empty under CI's platform.
       - name: Test
         run: |
-          bazel test //... --build_tests_only --test_output=errors \
+          bazel test //... --build_tests_only --disk_cache=~/.cache/bazel-disk --test_output=errors \
             || { rc=$?; [ "$rc" -eq 4 ] && echo "::notice::no test targets matched" || exit "$rc"; }
