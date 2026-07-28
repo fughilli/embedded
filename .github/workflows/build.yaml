@@ -12,11 +12,27 @@ jobs:
       # Nix provides the ESP32-C6 / RP2350 toolchains + Arduino cores (see
       # MODULE.bazel / nix/). `bazel build` realizes them on first use, so the
       # x86_64-linux runner exercises the x86_64 toolchain fetch — the leg that
-      # host (aarch64 / darwin) dev never hits.
+      # host (aarch64 / darwin) dev never hits. Single-user install so the whole
+      # /nix store is cacheable by cache-nix-action below.
       - name: Install Nix
-        uses: cachix/install-nix-action@v31
+        uses: nixbuild/nix-quick-install-action@v30
         with:
-          nix_path: nixpkgs=channel:nixos-unstable
+          nix_conf: experimental-features = nix-command flakes
+
+      # Cache the realized /nix store (fetched toolchains + arduino cores +
+      # anything built from source) across runs. Keyed on the nix/toolchain
+      # inputs; restores the most recent matching cache on a key miss and only
+      # rebuilds the delta. GC keeps it under the GHA 10 GB cache budget.
+      - name: Cache /nix store
+        uses: nix-community/cache-nix-action@v6
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.lock', 'MODULE.bazel', 'MODULE.bazel.lock', 'nix/**') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+          gc-max-store-size-linux: 5G
+          purge: true
+          purge-prefixes: nix-${{ runner.os }}-
+          purge-created: 0
+          purge-primary-key: never
 
       - name: Setup Bazel
         uses: bazel-contrib/setup-bazel@0.15.0
