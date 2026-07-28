@@ -5,8 +5,6 @@
 # per-chip flags response files.
 #
 # Tarball is selected by host platform; macOS Mach-O binaries need no patching.
-# TODO(build): fill in the x86_64-linux / aarch64-darwin hashes on first use
-# (`nix store prefetch-file <url>`).
 pkgs:
 let
   version = "14.2.0_20260121";
@@ -17,11 +15,11 @@ let
     };
     x86_64-linux = {
       triple = "x86_64-linux-gnu";
-      hash = pkgs.lib.fakeHash;
+      hash = "sha256-TgkKbL8f93aWhNmiSMm4vb5MCtoJit2lS0xnqRRJr6c=";
     };
     aarch64-darwin = {
       triple = "aarch64-apple-darwin";
-      hash = pkgs.lib.fakeHash;
+      hash = "sha256-djdVF4wVKZ+NbzyIsSH59D0GvkmfEb5KXeUb8+dbMCI=";
     };
   };
   src = srcs.${pkgs.stdenv.hostPlatform.system}

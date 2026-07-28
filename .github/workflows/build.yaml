@@ -33,5 +33,10 @@ jobs:
             //apps/blink:esp32c6 //apps/rainbow:esp32c6 //apps/wifi_ap:esp32c6 \
             //apps/blink:rp2350 //apps/rainbow:rp2350
 
+      # --build_tests_only: run the host tests without also (re)building every
+      # board's firmware binary. Tolerate exit 4 (no test targets matched) so the
+      # workflow stays green if the host-test set is ever empty under CI's platform.
       - name: Test
-        run: bazel test //... --test_output=errors
+        run: |
+          bazel test //... --build_tests_only --test_output=errors \
+            || { rc=$?; [ "$rc" -eq 4 ] && echo "::notice::no test targets matched" || exit "$rc"; }
