@@ -1,0 +1,57 @@
+# Board-support library + the Arduino-core facade.
+package(default_visibility = ["//visibility:public"])
+
+# The per-board Arduino core, chosen once by select(). Anything needing the core
+# (board support, FastLED, apps) depends on this rather than repeating the
+# select. Resolved under the embedded_binary platform transition.
+cc_library(
+    name = "arduino_core",
+    deps = select({
+        "//platforms:is_rp2350": ["@arduino_pico//:core"],
+        "//platforms:is_esp32c6": ["@arduino_esp32//:core"],
+        "//platforms:is_esp32": ["@arduino_esp32//:core_esp32"],
+    }),
+)
+
+# Board-support: the implementation .cpp is chosen per-board by select() — this
+# is the platform-support code the embedded_binary transition switches between.
+cc_library(
+    name = "board",
+    srcs = select({
+        "//platforms:is_rp2350": ["rp2350.cpp"],
+        "//platforms:is_esp32c6": ["esp32c6.cpp"],
+        "//platforms:is_esp32": ["esp32.cpp"],
+    }),
+    hdrs = ["board.h"],
+    # Full-path quote includes (`#include "libs/board/board.h"`) resolve against
+    # the repo root via Bazel's default -iquote, so no `includes` needed.
+    deps = [":arduino_core"],
+)
+
+# ESP32-C6 second-stage bootloader as a flashable .bin (the SDK ships it as an
+# ELF). Board-level, so every esp32c6 app's flash target shares it — it's the
+# default `bootloader` of //rules:flash.bzl esptool_flash.
+genrule(
+    name = "esp32c6_bootloader_bin",
+    srcs = ["@arduino_esp32//:bootloader_elf"],
+    outs = ["esp32c6_bootloader.bin"],
+    # Header says DIO even though the bootloader is the qio variant: the C6 ROM
+    # always boots in DIO and the bootloader switches to quad I/O itself
+    # (arduino-esp32 does the same: FlashMode.qio.build.flash_mode=dio).
+    cmd = ("$(execpath @esptool//:bin) --chip esp32c6 elf2image " +
+           "--flash_mode dio --flash_freq 80m --flash_size 4MB " +
+           "-o $@ $(location @arduino_esp32//:bootloader_elf)"),
+    tools = ["@esptool//:bin", "@esptool//:all"],
+)
+
+# Classic ESP32 (WROOM) second-stage bootloader. Same QIO-built/DIO-header
+# arrangement as the C6; this chip's ROM loads it from 0x1000, not 0x0.
+genrule(
+    name = "esp32_bootloader_bin",
+    srcs = ["@arduino_esp32//:bootloader_elf_esp32"],
+    outs = ["esp32_bootloader.bin"],
+    cmd = ("$(execpath @esptool//:bin) --chip esp32 elf2image " +
+           "--flash_mode dio --flash_freq 80m --flash_size 4MB " +
+           "-o $@ $(location @arduino_esp32//:bootloader_elf_esp32)"),
+    tools = ["@esptool//:bin", "@esptool//:all"],
+)

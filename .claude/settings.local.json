@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker system df *)",
+      "Bash(claude-container --shell)",
+      "Bash(kill %1)",
+      "Bash(wait)",
+      "Bash(nix store *)",
+      "Bash(bazelisk run *)",
+      "Bash(bazelisk build *)",
+      "Bash(python3 *)",
+      "Bash(ps *)",
+      "Bash(git add *)",
+      "Bash(git rebase *)",
+      "Bash(git commit *)",
+      "Bash(system_profiler SPAirPortDataType)",
+      "Bash(brew install *)",
+      "Bash(arduino-cli compile *)",
+      "Bash(arduino-cli upload *)",
+      "WebSearch",
+      "Bash(networksetup -listallhardwareports)",
+      "Bash(networksetup -getairportnetwork en0)",
+      "Read(//Users/kevin/Projects/git_checkouts/embedded/bazel-bin/apps/wifi_ap/**)",
+      "Bash(git push *)"
+    ]
+  }
+}

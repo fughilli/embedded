@@ -1,0 +1,41 @@
+# Public aliases for the extension-created vendor repos (@fastled,
+# @arduino_esp32). Bazel module extensions scope repo names to THIS module,
+# so a consumer module (e.g. led_mapper vendoring this repo as @embedded)
+# cannot address @fastled//:fastled directly — it CAN address
+# @embedded//libs/vendor:fastled. Apps inside this repo may use either form.
+package(default_visibility = ["//visibility:public"])
+
+alias(
+    name = "fastled",
+    actual = "@fastled//:fastled",
+)
+
+alias(
+    name = "wifi",
+    actual = "@arduino_esp32//:wifi",
+)
+
+alias(
+    name = "webserver",
+    actual = "@arduino_esp32//:webserver",
+)
+
+alias(
+    name = "partitions_no_ota",
+    actual = "@arduino_esp32//:partitions_no_ota",
+)
+
+alias(
+    name = "ble",
+    actual = "@arduino_esp32//:ble",
+)
+
+alias(
+    name = "preferences",
+    actual = "@arduino_esp32//:preferences",
+)
+
+alias(
+    name = "partitions_huge_app",
+    actual = "@arduino_esp32//:partitions_huge_app",
+)

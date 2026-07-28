@@ -1,0 +1,243 @@
+"""Bazel (bzlmod) module for ESP32-C6 + RP2350 bare-metal firmware.
+
+Toolchains and Arduino core sources are supplied by Nix via rules_nixpkgs; Bazel
+does the actual compile/link with native cc_* rules against those inputs. Rust
+modules link into the firmware via rules_rust with bare-metal target triples.
+
+Version pins were verified against the Bazel Central Registry on 2026-07-10.
+See WORKLOG.md for the post-relaunch bootstrap order and the list of values that
+still need to be validated on a Nix-enabled host (FOD hashes, arduino-pico tag).
+"""
+
+module(
+    name = "firmware",
+    version = "0.0.0",
+    compatibility_level = 1,
+)
+
+# --- Core rule sets (pinned) ------------------------------------------------
+bazel_dep(name = "rules_cc", version = "0.2.22")
+bazel_dep(name = "platforms", version = "1.1.0")
+bazel_dep(name = "bazel_skylib", version = "1.9.0")
+bazel_dep(name = "rules_pkg", version = "1.2.0")
+bazel_dep(name = "rules_rust", version = "0.71.3")
+
+# Rust <-> C/C++ interop:
+#  - rules_rust_bindgen: generate Rust FFI from C headers (C -> Rust)
+#  - cxx.rs: the cxx crate's Bazel rules for safe C++ <-> Rust bridges
+# (cbindgen, Rust -> C headers, is a custom rule in //rules:cbindgen.bzl using
+#  the Nix `cbindgen` binary.)
+bazel_dep(name = "rules_rust_bindgen", version = "0.71.3")
+bazel_dep(name = "cxx.rs", version = "1.0.190")  # 1.0.197+ requires Bazel >=8.0
+
+# rules_nixpkgs: only the *core* module is on the BCR. We do NOT use
+# rules_nixpkgs_cc — we hand-write our bare-metal cc_toolchains (§toolchains/cc)
+# and only borrow the compiler *binaries* + Arduino sources from Nix.
+bazel_dep(name = "rules_nixpkgs_core", version = "0.13.0")
+
+# ---------------------------------------------------------------------------
+# Nix: one nixpkgs repo, then individual derivations imported as Bazel repos.
+# ---------------------------------------------------------------------------
+# isolate: the attr/file tags are root-module-only for shared extension
+# usages, and this module is consumed as a DEPENDENCY by led_mapper (vendored
+# at third_party/embedded). Isolation scopes the repos to this module and
+# lifts the restriction; consumers need --experimental_isolated_extension_usages
+# (Bazel 7) in their .bazelrc, as this repo's own .bazelrc does.
+nix_repo = use_extension(
+    "@rules_nixpkgs_core//extensions:repository.bzl",
+    "nix_repo",
+    isolate = True,
+)
+
+# Pinned to a nixos-25.11 commit (branch tarballs 404 on the refs/tags URL that
+# `tag=` builds). Keep in sync with flake.nix's nixpkgs input.
+nix_repo.github(
+    name = "nixpkgs",
+    org = "NixOS",
+    repo = "nixpkgs",
+    commit = "b6018f87da91d19d0ab4cf979885689b469cdd41",
+)
+use_repo(nix_repo, "nixpkgs")
+
+nix_pkg = use_extension(
+    "@rules_nixpkgs_core//extensions:package.bzl",
+    "nix_pkg",
+    isolate = True,
+)
+
+# arm-none-eabi GCC (13.3.rel1, ships newlib-nano's libc_nano) — RP2350.
+nix_pkg.attr(
+    name = "arm_gcc",
+    attr = "gcc-arm-embedded",
+    repo = "@nixpkgs",
+    build_file = "//nix:arm_gcc.BUILD",
+)
+
+# picotool — elf -> uf2 for RP2350.
+nix_pkg.attr(
+    name = "picotool",
+    attr = "picotool",
+    repo = "@nixpkgs",
+    build_file = "//nix:picotool.BUILD",
+)
+
+# arduino-pico core sources + prebuilt libpico.a + linker script, fetched by a
+# small Nix derivation (nix/arduino_pico.nix). The generated repo carries the
+# cc_library(core) + cc_import(libpico) — see nix/arduino_pico.BUILD.
+nix_pkg.file(
+    name = "arduino_pico",
+    file = "//nix:arduino_pico.nix",
+    # arduino_pico.nix does `import ./arduino_pico_drv.nix`, so that file must be
+    # brought into the Nix eval context alongside it.
+    file_deps = ["//nix:arduino_pico_drv.nix"],
+    attr = "arduino-pico",
+    repo = "@nixpkgs",
+    build_file = "//nix:arduino_pico.BUILD",
+)
+
+# mbedtls 3.6.5 + ESP-IDF v5.5.4 port, built FROM SOURCE for the esp32c6 with
+# CONFIG_MBEDTLS_DYNAMIC_BUFFER (see nix/mbedtls_src.nix + nix/mbedtls_src.BUILD).
+# Replaces the prebuilt mbedtls .a's in arduino_esp32.BUILD's :core.
+nix_pkg.file(
+    name = "mbedtls_src",
+    file = "//nix:mbedtls_src.nix",
+    attr = "mbedtls-src",
+    repo = "@nixpkgs",
+    build_file = "//nix:mbedtls_src.BUILD",
+)
+
+# cbindgen (Rust -> C/C++ headers) — used by //rules:cbindgen.bzl.
+nix_pkg.attr(
+    name = "cbindgen",
+    attr = "rust-cbindgen",
+    repo = "@nixpkgs",
+    build_file = "//nix:cbindgen.BUILD",
+)
+
+# bindgen toolchain deps (prebuilt from Nix — avoids compiling LLVM from source
+# like rules_rust_bindgen's default toolchain does). See //toolchains/bindgen.
+nix_pkg.attr(name = "bindgen_tool", attr = "rust-bindgen", repo = "@nixpkgs", build_file = "//nix:bindgen_tool.BUILD")
+nix_pkg.attr(name = "clang_tool", attr = "clang", repo = "@nixpkgs", build_file = "//nix:clang.BUILD")
+nix_pkg.attr(name = "libclang", attr = "llvmPackages.libclang.lib", repo = "@nixpkgs", build_file = "//nix:libclang.BUILD")
+
+# --- ESP32-C6 (Milestone 2) ------------------------------------------------
+# esptool — elf -> flashable .bin.
+nix_pkg.attr(
+    name = "esptool",
+    attr = "esptool",
+    repo = "@nixpkgs",
+    build_file = "//nix:esptool.BUILD",
+)
+
+# Espressif prebuilt riscv32-esp-elf GCC (esp-14.2.0_20260121), fetched +
+# autoPatchelf'd by nix/esp_riscv_gcc.nix.
+nix_pkg.file(
+    name = "riscv_gcc",
+    file = "//nix:arduino_esp32.nix",
+    file_deps = [
+        "//nix:arduino_esp32_drv.nix",
+        "//nix:esp32_arduino_libs.nix",
+        "//nix:esp_riscv_gcc.nix",
+        "//nix:esp_xtensa_gcc.nix",
+    ],
+    attr = "riscv32-esp-elf",
+    repo = "@nixpkgs",
+    build_file = "//nix:riscv_gcc.BUILD",
+)
+
+# Espressif prebuilt xtensa-esp-elf GCC (same esp-14.2.0_20260121 release) —
+# classic ESP32 / ESP32-WROOM (Xtensa LX6). No Rust triple for this one:
+# upstream rustc has no Xtensa backend (that needs the esp-rs fork).
+nix_pkg.file(
+    name = "xtensa_gcc",
+    file = "//nix:arduino_esp32.nix",
+    file_deps = [
+        "//nix:arduino_esp32_drv.nix",
+        "//nix:esp32_arduino_libs.nix",
+        "//nix:esp_riscv_gcc.nix",
+        "//nix:esp_xtensa_gcc.nix",
+    ],
+    attr = "xtensa-esp-elf",
+    repo = "@nixpkgs",
+    build_file = "//nix:xtensa_gcc.BUILD",
+)
+
+# arduino-esp32 core merged with the per-chip prebuilt SDKs (esp32-arduino-libs)
+# into one tree at sdk/<chip> (esp32c6, esp32). Carries the per-chip
+# cc_library(core) targets — see arduino_esp32.BUILD.
+nix_pkg.file(
+    name = "arduino_esp32",
+    file = "//nix:arduino_esp32.nix",
+    file_deps = [
+        "//nix:arduino_esp32_drv.nix",
+        "//nix:esp32_arduino_libs.nix",
+        "//nix:esp_riscv_gcc.nix",
+        "//nix:esp_xtensa_gcc.nix",
+    ],
+    attr = "arduino-esp32",
+    repo = "@nixpkgs",
+    build_file = "//nix:arduino_esp32.BUILD",
+)
+
+use_repo(
+    nix_pkg,
+    "arm_gcc",
+    "picotool",
+    "arduino_pico",
+    "cbindgen",
+    "bindgen_tool",
+    "clang_tool",
+    "libclang",
+    "esptool",
+    "riscv_gcc",
+    "xtensa_gcc",
+    "arduino_esp32",
+    "mbedtls_src",
+)
+
+# ---------------------------------------------------------------------------
+# Add-on Arduino libraries via the repo rule (zip -> code-generated BUILD). The
+# generated cc_library depends on the board-agnostic core facade, so it compiles
+# for whichever board the embedded_binary transition selects.
+# ---------------------------------------------------------------------------
+arduino = use_extension("//rules:extensions.bzl", "arduino")
+arduino.library(
+    name = "fastled",
+    urls = ["https://github.com/FastLED/FastLED/archive/refs/tags/3.10.5.zip"],
+    sha256 = "1d873ce548a9a00aaaf0f8fd9e9c15560fd997f19871810e9889750f6094ae66",
+    strip_prefix = "FastLED-3.10.5",
+    src_dirs = ["src"],
+    defines = ["FASTLED_INTERNAL"],  # silence the version-pragma spam
+    deps = ["@firmware//libs/board:arduino_core"],
+)
+use_repo(arduino, "fastled")
+
+# ---------------------------------------------------------------------------
+# Rust: bare-metal target triples for both boards. rules_rust fetches prebuilt
+# rust-std (core/alloc) for these tier-2 triples on stable — no -Zbuild-std.
+# ---------------------------------------------------------------------------
+rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
+rust.toolchain(
+    edition = "2021",
+    versions = ["1.85.0"],
+    extra_target_triples = [
+        # RP2350 Cortex-M33. Use the SOFT-float-ABI triple (eabi, not eabihf):
+        # arduino-pico builds -mfloat-abi=softfp (VFP instructions, but floats
+        # passed in core registers = soft ABI). eabihf is hard-float ABI and the
+        # linker refuses to merge it with softfp objects ("uses VFP register
+        # arguments"). eabi maps to the same constraints (cpu:armv8-m, os:none).
+        "thumbv8m.main-none-eabi",
+        "riscv32imac-unknown-none-elf",  # ESP32-C6
+    ],
+)
+use_repo(rust, "rust_toolchains")
+
+register_toolchains(
+    "@rust_toolchains//:all",
+    # bindgen toolchain backed by Nix prebuilt clang/libclang (the default
+    # rules_rust_bindgen toolchain compiles LLVM from source — too heavy).
+    "//toolchains/bindgen:bindgen_toolchain",
+    "//toolchains/cc/rp2350_arm:cc_toolchain",
+    "//toolchains/cc/esp32c6:cc_toolchain",
+    "//toolchains/cc/esp32:cc_toolchain",
+)

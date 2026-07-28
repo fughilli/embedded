@@ -1,0 +1,79 @@
+# Board platforms + the constraints that key toolchain resolution and the
+# select()s in platform-support code.
+#
+# We use a custom `board` constraint as the primary discriminator (rather than
+# leaning on @platforms//cpu, whose set of embedded CPU values is incomplete for
+# Cortex-M33/rv32imac). @platforms//os:none marks bare-metal.
+#
+# Note the naming: the constraint_values are `*_board` and the platform() targets
+# are the bare board names (a constraint_value and a platform can't share a name
+# in one package).
+package(default_visibility = ["//visibility:public"])
+
+constraint_setting(name = "board")
+
+constraint_value(
+    name = "rp2350_board",
+    constraint_setting = ":board",
+)
+
+constraint_value(
+    name = "esp32c6_board",
+    constraint_setting = ":board",
+)
+
+constraint_value(
+    name = "esp32_board",
+    constraint_setting = ":board",
+)
+
+# RP2350 in Arm Cortex-M33 mode. cpu:armv8-m is exactly the Cortex-M33 profile
+# and is what rules_rust maps thumbv8m.main-none-eabihf to, so this single set
+# resolves BOTH the cc_toolchain and the Rust toolchain.
+platform(
+    name = "rp2350",
+    constraint_values = [
+        "@platforms//cpu:armv8-m",
+        "@platforms//os:none",
+        ":rp2350_board",
+    ],
+)
+
+# ESP32-C6 (RISC-V rv32imac). Milestone 2.
+platform(
+    name = "esp32c6",
+    constraint_values = [
+        "@platforms//cpu:riscv32",
+        "@platforms//os:none",
+        ":esp32c6_board",
+    ],
+)
+
+# Classic ESP32 / ESP32-WROOM (Xtensa LX6, dual core). @platforms//cpu has no
+# xtensa value, so the board constraint alone discriminates; that's fine because
+# no other registered toolchain matches os:none + esp32_board. (No Rust triple
+# either: upstream rustc has no Xtensa backend — Rust-linking apps stay off
+# this board.)
+platform(
+    name = "esp32",
+    constraint_values = [
+        "@platforms//os:none",
+        ":esp32_board",
+    ],
+)
+
+# config_settings so libraries can select() on the active board.
+config_setting(
+    name = "is_rp2350",
+    constraint_values = [":rp2350_board"],
+)
+
+config_setting(
+    name = "is_esp32c6",
+    constraint_values = [":esp32c6_board"],
+)
+
+config_setting(
+    name = "is_esp32",
+    constraint_values = [":esp32_board"],
+)

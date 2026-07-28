@@ -1,0 +1,32 @@
+# bzlmod is the source of truth; no WORKSPACE.
+common --enable_bzlmod
+
+# The nix_repo/nix_pkg extension usages are isolated (see MODULE.bazel) so the
+# module works as a dependency; isolation is experimental in Bazel 7.
+common --experimental_isolated_extension_usages
+
+# Hermetic action env so the on-disk cache is correct across machines.
+build --incompatible_strict_action_env
+
+# Bare-metal: we do our own toolchain resolution via registered cc_toolchains.
+build --incompatible_enable_cc_toolchain_resolution
+
+# Persist caches in the workspace tree (dot-prefixed, gitignored) so they
+# survive container restarts that wipe ~/.cache. Both are content-addressable.
+build  --disk_cache=.bazel-disk-cache        # action outputs
+common --repository_cache=.bazel-repo-cache  # downloaded external archives
+
+test --test_output=errors
+
+# aarch64 SIGILL guard: some Bazel/bundled-JDK combos emit SVE instructions that
+# crash the JVM on certain aarch64 hosts. Harmless on hosts without SVE. Guard it
+# with IgnoreUnrecognizedVMOptions so x86_64 JVMs (e.g. GitHub CI runners), where
+# -XX:UseSVE doesn't exist, ignore it instead of aborting JVM startup.
+startup --host_jvm_args=-XX:+IgnoreUnrecognizedVMOptions --host_jvm_args=-XX:UseSVE=0
+
+# --- Per-board convenience configs -----------------------------------------
+# `bazel build --config=rp2350 //...` retargets the whole build to the board.
+# (The embedded_binary rule sets the platform per-target via a transition, so
+# these configs are only needed when building plain cc_* targets directly.)
+build:rp2350  --platforms=//platforms:rp2350
+build:esp32c6 --platforms=//platforms:esp32c6

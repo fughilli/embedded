@@ -1,0 +1,40 @@
+# FastLED rainbow chaser for all boards. Same shape as apps/blink: one
+# board-agnostic cc_binary, retargeted + packaged per board by firmware_binary.
+load("//rules:firmware.bzl", "firmware_binary")
+load("//rules:flash.bzl", "esptool_flash", "picotool_flash")
+
+package(default_visibility = ["//visibility:public"])
+
+cc_binary(
+    name = "rainbow",
+    srcs = ["rainbow.cpp"],
+    target_compatible_with = select({
+        "//platforms:is_rp2350": [],
+        "//platforms:is_esp32c6": [],
+        "//platforms:is_esp32": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    deps = [
+        "//libs/board:arduino_core",  # the board's Arduino core (provides main())
+        "//libs/pins",                # LED_DATA_PIN (per board) + NUM_LEDS
+        "@fastled//:fastled",
+    ],
+)
+
+firmware_binary(name = "rp2350", binary = ":rainbow", board = "rp2350")
+
+firmware_binary(name = "esp32c6", binary = ":rainbow", board = "esp32c6")
+
+firmware_binary(name = "esp32", binary = ":rainbow", board = "esp32")
+
+picotool_flash(name = "flash_rp2350", uf2 = ":rp2350")
+
+esptool_flash(name = "flash_esp32c6", app = ":esp32c6")
+
+esptool_flash(
+    name = "flash_esp32",
+    app = ":esp32",
+    bootloader = "//libs/board:esp32_bootloader_bin",
+    bootloader_offset = "0x1000",  # classic ESP32 ROM loads from 0x1000, not 0x0
+    chip = "esp32",
+)

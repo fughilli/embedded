@@ -1,0 +1,13 @@
+# Bazel symlinks + in-tree caches (see .bazelrc / .bazeliskrc)
+/bazel-*
+/.bazel-disk-cache/
+/.bazel-repo-cache/
+/.bazelisk/
+
+# Nix
+result
+result-*
+
+# Editors / OS
+*.swp
+.DS_Store

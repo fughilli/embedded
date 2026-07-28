@@ -1,0 +1,58 @@
+# Classic ESP32 / ESP32-WROOM (Xtensa LX6, dual core) cc_toolchain: reusable
+# config rule + the Nix Espressif xtensa-esp-elf GCC (@xtensa_gcc), gated to
+# //platforms:esp32. The @xtensa_gcc tools are the xtensa-esp32-elf-* wrappers,
+# which bake in the esp32 dynconfig — no -mcpu/-march flag exists for Xtensa.
+#
+# Most compile/link detail (defines, includes, ld scripts, libs) is supplied by
+# the esp32-arduino-libs `flags/*` response files in nix/arduino_esp32.BUILD;
+# here we set only the base arch flags (from the SDK's flags/c_flags) so every
+# object — including ones built without the core's copts — is ABI-compatible.
+load("//toolchains/cc:cc_toolchain_config.bzl", "cc_toolchain_config")
+
+package(default_visibility = ["//visibility:public"])
+
+_ARCH_FLAGS = [
+    "-mlongcalls",
+    "-mdisable-hardware-atomics",
+]
+
+cc_toolchain_config(
+    name = "config",
+    toolchain_identifier = "esp32-xtensa-esp-elf",
+    target_cpu = "xtensa",
+    target_system_name = "xtensa-esp32-elf",
+    gcc = "@xtensa_gcc//:gcc",
+    gpp = "@xtensa_gcc//:g++",
+    ar = "@xtensa_gcc//:ar",
+    strip = "@xtensa_gcc//:strip",
+    compile_flags = _ARCH_FLAGS + [
+        "-ffunction-sections",
+        "-fdata-sections",
+        "-no-canonical-prefixes",
+    ],
+    link_flags = _ARCH_FLAGS + [
+        "-no-canonical-prefixes",
+    ],
+)
+
+cc_toolchain(
+    name = "esp32_cc",
+    all_files = "@xtensa_gcc//:all",
+    ar_files = "@xtensa_gcc//:all",
+    compiler_files = "@xtensa_gcc//:all",
+    dwp_files = "@xtensa_gcc//:all",
+    linker_files = "@xtensa_gcc//:all",
+    objcopy_files = "@xtensa_gcc//:all",
+    strip_files = "@xtensa_gcc//:all",
+    toolchain_config = ":config",
+)
+
+toolchain(
+    name = "cc_toolchain",
+    target_compatible_with = [
+        "@platforms//os:none",
+        "//platforms:esp32_board",
+    ],
+    toolchain = ":esp32_cc",
+    toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
+)
