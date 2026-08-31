@@ -1,0 +1,30 @@
+# STM32G081 bare-metal board support: startup (vector table + Reset_Handler),
+# the LED/GPIO driver implementing //libs/board:board.h, and the linker script.
+# Unlike the Arduino boards this pulls in NO core — it's a freestanding build
+# against @arm_gcc (see //toolchains/cc/stm32g081).
+package(default_visibility = ["//visibility:public"])
+
+# Board-support code linked into every stm32g081 app. `alwayslink` keeps the
+# vector table + Reset_Handler (only reachable from the reset vector, so --gc-
+# sections / the linker would otherwise drop them).
+cc_library(
+    name = "support",
+    srcs = [
+        "board_stm32g081.c",
+        "startup_stm32g081.c",
+    ],
+    hdrs = ["stm32g081.h"],
+    # `#include "libs/board/..."` resolves against the repo root via -iquote.
+    alwayslink = True,
+    target_compatible_with = ["//platforms:stm32g081_board"],
+    deps = ["//libs/board:board_hdr"],
+)
+
+# The linker script, referenced by an app's `additional_linker_inputs` + a
+# `-T $(location ...)` linkopt (see //apps/blink_stm32g081).
+exports_files(["STM32G081xx.ld"])
+
+filegroup(
+    name = "linker_script",
+    srcs = ["STM32G081xx.ld"],
+)

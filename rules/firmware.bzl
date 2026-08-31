@@ -26,6 +26,7 @@ _BOARD_PLATFORM = {
     "rp2350": Label("//platforms:rp2350"),
     "esp32c6": Label("//platforms:esp32c6"),
     "esp32": Label("//platforms:esp32"),
+    "stm32g081": Label("//platforms:stm32g081"),
 }
 
 def _board_transition_impl(settings, attr):
@@ -64,6 +65,16 @@ def _firmware_binary_impl(ctx):
         args.add(elf)
         args.add(out)
         args.add("--family", "rp2350-arm-s")
+    elif board == "stm32g081":
+        # Bare-metal STM32: strip the ELF to a raw Flash image. Flashes at the
+        # Flash origin 0x08000000 (st-flash / dfu-util). objcopy comes from the
+        # same @arm_gcc as the compiler.
+        out = ctx.actions.declare_file(ctx.label.name + ".bin")
+        tool = ctx.file._objcopy
+        tool_files = ctx.attr._arm_gcc_files[DefaultInfo].files
+        args.add("-O", "binary")
+        args.add(elf)
+        args.add(out)
     else:  # esp32 family — the board name IS the esptool chip name
         out = ctx.actions.declare_file(ctx.label.name + ".bin")
         tool = ctx.file._esptool
@@ -101,7 +112,7 @@ firmware_binary = rule(
         ),
         "board": attr.string(
             mandatory = True,
-            values = ["rp2350", "esp32c6", "esp32"],
+            values = ["rp2350", "esp32c6", "esp32", "stm32g081"],
             doc = "Which board to build for (drives the transition + packager).",
         ),
         "opt_mode": attr.string(
@@ -126,5 +137,11 @@ firmware_binary = rule(
             cfg = "exec",
         ),
         "_esptool_files": attr.label(default = "@esptool//:all", cfg = "exec"),
+        "_objcopy": attr.label(
+            default = "@arm_gcc//:objcopy",
+            allow_single_file = True,
+            cfg = "exec",
+        ),
+        "_arm_gcc_files": attr.label(default = "@arm_gcc//:all", cfg = "exec"),
     },
 )

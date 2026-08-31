@@ -1,5 +1,38 @@
 # WORKLOG
 
+## ✅ STM32G081 (CORTEX-M0+) BUILDS GREEN (2026-08-31)
+
+`bazel build //:blink_stm32g081` → valid STM32G081 image. Fourth board added
+end-to-end: platform + constraint (`armv6-m` / os:none / `stm32g081_board`),
+cc_toolchain, bare-metal board support, blink app, and a `firmware_binary`
+packager branch (`objcopy -O binary` → raw `.bin` for st-flash/dfu at
+0x08000000). NOT run on hardware — verified only via the ELF: `arm-none-eabi-size`
+= 576 B text / 1536 B bss, `objdump -f` = architecture `armv6s-m`, entry
+`0x08000199` (Reset_Handler|thumb), vector[0]=`0x20009000` (SP = RAM+36K),
+vector[1]=reset; `board_setup`/`board_set_led`/`main` all resolve.
+
+What made STM32 different from the Arduino boards (for the next bare-metal chip):
+
+- **No Arduino core — fully freestanding.** The STM32 has no wired Arduino core,
+  so it does NOT go through the `//libs/board:arduino_core` facade. It links its
+  own startup (`//libs/board/stm32g081/startup_stm32g081.c`: vector table +
+  `Reset_Handler`) and linker script (`STM32G081xx.ld`: 128K Flash @0x08000000,
+  36K SRAM @0x20000000) instead. Added a header-only `//libs/board:board_hdr`
+  (board.h with no core dep) for it to implement.
+- **Reuses @arm_gcc** (same arm-none-eabi GCC as the RP2350) — no new Nix dep to
+  build. The toolchain differs only in `-mcpu=cortex-m0plus -mthumb
+  -mfloat-abi=soft` (no FPU on armv6-m) and bare-metal link flags
+  (`--specs=nano.specs --specs=nosys.specs -nostartfiles -Wl,--gc-sections`).
+- **Walk `.init_array` by hand, not `__libc_init_array`.** With `-nostartfiles`,
+  newlib's `__libc_init_array` pulls in `_init`/`_fini` from crti/crtn (omitted),
+  and v6-m's `_init` trips a "dangerous relocation: unsupported relocation".
+  Reset_Handler iterates `__preinit_array_*`/`__init_array_*` directly instead.
+- **The linker script is wired at the app**, not the toolchain: `//apps/blink_stm32g081`
+  passes `-T$(location //libs/board/stm32g081:linker_script)` via `linkopts` +
+  `additional_linker_inputs` (a board-agnostic toolchain can't hardcode one).
+- Demo LED is **PA5** (NUCLEO-G081RB LD4), driven by raw RCC/GPIO register access
+  (RM0444). `board_delay_ms` is a coarse HSI-16MHz busy-wait, not timer-accurate.
+
 ## ✅ CLASSIC ESP32 / WROOM (XTENSA) BUILDS GREEN (2026-07-17, session 6)
 
 `bazel build //:blink_esp32 //:rainbow_esp32` → valid ESP32 images (esptool

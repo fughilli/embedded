@@ -13,6 +13,14 @@ cc_library(
     }),
 )
 
+# Header-only view of the board interface, with NO Arduino core dep — for
+# bare-metal boards (e.g. stm32g081) whose support implements board.h directly
+# against the silicon. The Arduino boards use `:board` below instead.
+cc_library(
+    name = "board_hdr",
+    hdrs = ["board.h"],
+)
+
 # Board-support: the implementation .cpp is chosen per-board by select() — this
 # is the platform-support code the embedded_binary transition switches between.
 cc_library(
