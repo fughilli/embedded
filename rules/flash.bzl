@@ -117,3 +117,60 @@ picotool_flash = rule(
         "_bash_runfiles": attr.label(default = "@bazel_tools//tools/bash/runfiles"),
     },
 )
+
+# ---------------------------------------------------------------------------
+# pyOCD (SWD/JTAG over CMSIS-DAP / ST-Link) — for chips without built-in DFU
+# ---------------------------------------------------------------------------
+# Drives //tools/pyocd:pyocd (pip-vendored pyOCD + Nix libusb) to flash a
+# firmware_binary's ELF over a debug probe. Unlike the picotool/esptool rules,
+# the "tool" here is a py_binary, so we exec it via rlocation and stage ITS
+# runfiles (hermetic interpreter, wheels, staged Nix libusb) alongside the ELF.
+def _pyocd_flash_impl(ctx):
+    # The ELF (addresses embedded) is the cleanest input for pyOCD's loader; take
+    # it from the firmware_binary `elf` output group rather than the raw .bin.
+    elf = ctx.attr.firmware[OutputGroupInfo].elf.to_list()[0]
+    tool = ctx.executable._pyocd
+
+    argv = ['"$(rlocation %s)"' % _rloc(ctx, tool), "flash", "--target", "'%s'" % ctx.attr.target]
+    if ctx.attr.frequency:
+        argv += ["--frequency", "'%s'" % ctx.attr.frequency]
+    argv.append('"$(rlocation %s)"' % _rloc(ctx, elf))
+    argv.append('"$@"')  # extra CLI args pass through (e.g. --probe <uid>)
+
+    out = ctx.actions.declare_file(ctx.label.name + ".sh")
+    ctx.actions.write(out, _RUNFILES_INIT + "exec " + " ".join(argv) + "\n", is_executable = True)
+
+    runfiles = ctx.runfiles(files = [elf])
+    runfiles = runfiles.merge(ctx.attr._pyocd[DefaultInfo].default_runfiles)
+    runfiles = runfiles.merge(ctx.attr._bash_runfiles[DefaultInfo].default_runfiles)
+    return [DefaultInfo(executable = out, runfiles = runfiles)]
+
+pyocd_flash = rule(
+    implementation = _pyocd_flash_impl,
+    executable = True,
+    doc = "Flash a firmware_binary's ELF to a connected target via pyOCD " +
+          "(SWD/JTAG over a CMSIS-DAP or ST-Link probe). For MCUs without " +
+          "built-in DFU, e.g. the STM32G081.",
+    attrs = {
+        "firmware": attr.label(
+            mandatory = True,
+            doc = "A firmware_binary target; its `elf` output group is flashed.",
+        ),
+        "target": attr.string(
+            mandatory = True,
+            doc = "pyOCD target type (e.g. `stm32g081xx`). A chip outside " +
+                  "pyOCD's built-ins needs its CMSIS pack: " +
+                  "`bazel run //tools/pyocd -- pack install <target>`.",
+        ),
+        "frequency": attr.string(
+            default = "",
+            doc = "Optional SWD/JTAG clock in Hz (e.g. `4000000`).",
+        ),
+        "_pyocd": attr.label(
+            default = "//tools/pyocd:pyocd",
+            executable = True,
+            cfg = "exec",
+        ),
+        "_bash_runfiles": attr.label(default = "@bazel_tools//tools/bash/runfiles"),
+    },
+)

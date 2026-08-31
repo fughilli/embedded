@@ -5,6 +5,7 @@
 # + linker script (//libs/board/stm32g081) instead of an Arduino core, so the
 # link needs the script wired in via linkopts + additional_linker_inputs.
 load("//rules:firmware.bzl", "firmware_binary")
+load("//rules:flash.bzl", "pyocd_flash")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -26,3 +27,14 @@ cc_binary(
 )
 
 firmware_binary(name = "stm32g081", binary = ":blink", board = "stm32g081")  # -> stm32g081.bin
+
+# Flash over SWD via pyOCD (the STM32G0 has no built-in USB DFU). Needs a
+# CMSIS-DAP or ST-Link probe. The stm32g081 target lives in a CMSIS pack; install
+# it once with `bazel run //tools/pyocd -- pack install stm32g081`.
+#   bazel run //apps/blink_stm32g081:flash_stm32g081
+#   bazel run //apps/blink_stm32g081:flash_stm32g081 -- --probe <uid>
+pyocd_flash(
+    name = "flash_stm32g081",
+    firmware = ":stm32g081",
+    target = "stm32g081xx",
+)

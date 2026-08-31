@@ -1,0 +1,9 @@
+# Direct Python deps for the vendored pyOCD flash driver (//tools/pyocd).
+# Regenerate the lock:  bazel run //tools/pyocd:requirements.update
+#
+# pyocd pulls capstone / cmsis-pack-manager / pyusb / libusb-package etc. as
+# transitive deps (all ship prebuilt aarch64 + x86_64 manylinux wheels, so no
+# from-source compiles). The one native C library, libusb, is NOT used from the
+# libusb-package wheel — it is materialized from Nix (@libusb) and injected by
+# //tools/pyocd:nix_libusb.
+pyocd==0.45.1

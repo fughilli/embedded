@@ -26,6 +26,7 @@ startup + linker script, reusing the RP2350's `@arm_gcc` arm-none-eabi GCC. See
 | `toolchains/cc/` | Reusable GCC-cross `cc_toolchain_config` + per-board `cc_toolchain` |
 | `libs/board/stm32g081/` | Bare-metal STM32G081 support: startup (vectors + reset), linker script, GPIO LED |
 | `apps/blink_stm32g081/` | Freestanding STM32G081 blink (no Arduino; `main()` entry) |
+| `tools/pyocd/` | pyOCD flash driver — pip-vendored (rules_python) with libusb substituted from Nix |
 | `rules/embedded.bzl` | `embedded_binary` rule: platform transition wrapping a cc_binary |
 | `rules/firmware.bzl` | `firmware_binary` rule: transition + package a cc_binary → board `.uf2`/`.bin` |
 | `rules/arduino_library.bzl` | Repo rule: fetch a library `.zip`, code-generate its BUILD (FastLED uses it) |
@@ -67,10 +68,38 @@ bazel run //apps/blink:flash_esp32c6             # esptool write-flash (bootload
 bazel run //apps/blink:flash_esp32c6 -- --port /dev/ttyACM0   # extra args pass through
 bazel run //apps/blink:flash_esp32               # classic ESP32/WROOM (bootloader at 0x1000)
 bazel run //apps/rainbow:flash_rp2350            # same targets exist for the rainbow app
+
+# STM32G081 (no built-in USB DFU): flash the ELF over SWD via pyOCD + a probe.
+bazel run //tools/pyocd -- pack install stm32g081   # one-time: fetch the CMSIS pack
+bazel run //apps/blink_stm32g081:flash_stm32g081    # pyocd flash --target stm32g081xx
 ```
 
 Each `flash` target builds the firmware, then execs the Nix-provided tool over
 the artifacts (rules in `rules/flash.bzl`).
+
+### pyOCD as a hermetic flash driver (`//tools/pyocd`)
+
+For targets without a ROM DFU bootloader (the STM32G081, and any other
+CMSIS-DAP/ST-Link-attached chip), the flash driver is **pyOCD**, vendored
+hermetically: the Python package and its deps come from PyPI via `rules_python`
+(pinned in `tools/pyocd/requirements.lock`), while pyOCD's one native C library,
+**libusb**, is materialized from **Nix** (`@libusb`) rather than the prebuilt
+blob bundled in the `libusb-package` wheel. The `//tools/pyocd:nix_libusb`
+wrapper `py_library` stages the Nix `.so` and points pyusb's `find_library` at
+it, so the Nix build is what pyOCD actually `dlopen`s.
+
+```sh
+bazel run //tools/pyocd -- list           # enumerate probes (needs a probe + USB)
+bazel run //tools/pyocd -- --version      # 0.45.1
+bazel run //tools/pyocd:verify_backend    # assert pyusb bound the Nix libusb (no HW)
+```
+
+`pyocd_flash` (in `rules/flash.bzl`) wraps this binary; point it at a
+`firmware_binary` and a pyOCD target type. Regenerate the lock after editing
+`tools/pyocd/requirements.in` with `bazel run //tools/pyocd:requirements.update`.
+`list`/`flash` enumerate USB, so they only complete where a probe (and usbfs
+access) is present — reaching that libusb enumeration is itself proof the Nix
+libusb is wired in.
 
 ## Rust ↔ C/C++ interop
 

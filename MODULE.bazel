@@ -22,6 +22,12 @@ bazel_dep(name = "bazel_skylib", version = "1.9.0")
 bazel_dep(name = "rules_pkg", version = "1.2.0")
 bazel_dep(name = "rules_rust", version = "0.71.3")
 
+# rules_python: hermetic interpreter + pip, used to vendor the pyOCD flash driver
+# (//tools/pyocd) from PyPI. Pinned to the 1.5 line — 2.x requires Bazel >=8 and
+# this repo is on 7.7.1. pyOCD's native runtime lib (libusb) is NOT taken from a
+# pip wheel; it is materialized from Nix (below) and injected by the wrapper.
+bazel_dep(name = "rules_python", version = "1.5.4")
+
 # Rust <-> C/C++ interop:
 #  - rules_rust_bindgen: generate Rust FFI from C headers (C -> Rust)
 #  - cxx.rs: the cxx crate's Bazel rules for safe C++ <-> Rust bridges
@@ -120,6 +126,13 @@ nix_pkg.attr(name = "bindgen_tool", attr = "rust-bindgen", repo = "@nixpkgs", bu
 nix_pkg.attr(name = "clang_tool", attr = "clang", repo = "@nixpkgs", build_file = "//nix:clang.BUILD")
 nix_pkg.attr(name = "libclang", attr = "llvmPackages.libclang.lib", repo = "@nixpkgs", build_file = "//nix:libclang.BUILD")
 
+# Native USB libraries for the pyOCD flash driver (//tools/pyocd). pyOCD's Python
+# deps come from pip, but the actual libusb C library it dlopens is provided here
+# by Nix (not the non-hermetic prebuilt blob bundled in the libusb-package wheel).
+# hidapi is only used by pyOCD off-Linux, materialized here for completeness.
+nix_pkg.attr(name = "libusb", attr = "libusb1", repo = "@nixpkgs", build_file = "//nix:libusb.BUILD")
+nix_pkg.attr(name = "hidapi", attr = "hidapi", repo = "@nixpkgs", build_file = "//nix:hidapi.BUILD")
+
 # --- ESP32-C6 (Milestone 2) ------------------------------------------------
 # esptool — elf -> flashable .bin.
 nix_pkg.attr(
@@ -193,6 +206,8 @@ use_repo(
     "xtensa_gcc",
     "arduino_esp32",
     "mbedtls_src",
+    "libusb",
+    "hidapi",
 )
 
 # ---------------------------------------------------------------------------
@@ -231,6 +246,28 @@ rust.toolchain(
     ],
 )
 use_repo(rust, "rust_toolchains")
+
+# ---------------------------------------------------------------------------
+# Python: hermetic interpreter + pip, for the pyOCD flash driver (//tools/pyocd).
+# The interpreter comes from rules_python (no system Python needed); pyocd and
+# its pure/wheel deps resolve from the committed requirements.lock. The one
+# native lib (libusb) is supplied by Nix, not pip — see //tools/pyocd.
+# ---------------------------------------------------------------------------
+PYTHON_VERSION = "3.11"
+
+python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+python.toolchain(
+    is_default = True,
+    python_version = PYTHON_VERSION,
+)
+
+pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
+pip.parse(
+    hub_name = "pypi",
+    python_version = PYTHON_VERSION,
+    requirements_lock = "//tools/pyocd:requirements.lock",
+)
+use_repo(pip, "pypi")
 
 register_toolchains(
     "@rust_toolchains//:all",

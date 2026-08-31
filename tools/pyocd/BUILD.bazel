@@ -1,0 +1,71 @@
+# pyOCD as a hermetic, Bazel-vendored flash/debug driver.
+#
+# pyocd + its deps come from PyPI via rules_python (@pypi, driven by the
+# committed requirements.lock). Its one native C library, libusb, is NOT taken
+# from a pip wheel: it is materialized from Nix (@libusb) and injected into
+# pyusb by the `nix_libusb` wrapper below. Use //tools/pyocd:pyocd directly
+# (`bazel run //tools/pyocd -- list`) or the `pyocd_flash` rule for flash targets
+# that lack built-in DFU (e.g. the STM32G081).
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+load("@rules_python//python:pip.bzl", "compile_pip_requirements")
+
+package(default_visibility = ["//visibility:public"])
+
+# requirements.in -> requirements.lock.
+#   regenerate:  bazel run //tools/pyocd:requirements.update
+#   verify (CI): bazel test //tools/pyocd:requirements_test
+compile_pip_requirements(
+    name = "requirements",
+    src = "requirements.in",
+    requirements_txt = "requirements.lock",
+)
+
+# Stage the Nix libusb/hidapi shared objects under fixed sonames next to
+# nix_backend.py, so it can resolve them by __file__-relative path in runfiles.
+genrule(
+    name = "stage_nix_libs",
+    srcs = [
+        "@libusb//:lib",
+        "@hidapi//:lib",
+    ],
+    outs = [
+        "_nixlib/libusb-1.0.so.0",
+        "_nixlib/libhidapi-libusb.so.0",
+    ],
+    cmd = "\n".join([
+        "mkdir -p $(RULEDIR)/_nixlib",
+        "cp $(location @libusb//:lib) $(RULEDIR)/_nixlib/libusb-1.0.so.0",
+        "cp $(location @hidapi//:lib) $(RULEDIR)/_nixlib/libhidapi-libusb.so.0",
+    ]),
+)
+
+# Wrapper py_library: the Nix native libs (as runfiles) + the shim that makes
+# pyusb load them. This is the "binary deps substituted via Nix" target.
+py_library(
+    name = "nix_libusb",
+    srcs = ["nix_backend.py"],
+    data = [":stage_nix_libs"],
+    imports = ["."],
+    deps = ["@pypi//pyusb"],
+)
+
+py_binary(
+    name = "pyocd",
+    srcs = ["pyocd_main.py"],
+    imports = ["."],
+    main = "pyocd_main.py",
+    deps = [
+        ":nix_libusb",
+        "@pypi//pyocd",
+    ],
+)
+
+# Hardware-free check that pyusb binds the Nix libusb (see verify_backend.py).
+#   bazel run //tools/pyocd:verify_backend
+py_binary(
+    name = "verify_backend",
+    srcs = ["verify_backend.py"],
+    imports = ["."],
+    main = "verify_backend.py",
+    deps = [":nix_libusb"],
+)
