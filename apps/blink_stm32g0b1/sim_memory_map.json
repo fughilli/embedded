@@ -1,0 +1,10 @@
+{
+  "_comment": "STM32G0B1 device model for full-app emulation of the exact blink image. Flash/SRAM per RM0444 (256K/144K); the peripheral (mmio) regions cover just what blink touches — RCC (clock enables) and the GPIO ports (LED on PD8). boot:reset makes the harness start from the vector table like the real chip.",
+  "regions": [
+    {"name": "FLASH", "kind": "rom",  "origin": "0x08000000", "length": "256K"},
+    {"name": "SRAM",  "kind": "ram",  "origin": "0x20000000", "length": "144K"},
+    {"name": "RCC",   "kind": "mmio", "origin": "0x40021000", "length": "0x400"},
+    {"name": "GPIO",  "kind": "mmio", "origin": "0x50000000", "length": "0x2000"}
+  ],
+  "boot": "reset"
+}
