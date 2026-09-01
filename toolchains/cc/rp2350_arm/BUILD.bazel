@@ -33,9 +33,12 @@ cc_toolchain_config(
         "-fdata-sections",
         "-no-canonical-prefixes",
     ],
-    link_flags = _CORE_ARCH_FLAGS + [
-        "-no-canonical-prefixes",
-    ],
+    # NOTE: no -no-canonical-prefixes at link (kept for compile). With it, gcc
+    # hands ld the LTO plugin via a path relative to a relative argv[0]; macOS'
+    # hardened runtime refuses to dlopen a relative path ("relative path not
+    # allowed in hardened program"). Canonical (absolute) prefixes load fine on
+    # both macOS and Linux. (Same fix as //toolchains/cc/stm32g0.)
+    link_flags = _CORE_ARCH_FLAGS,
 )
 
 cc_toolchain(
