@@ -33,20 +33,19 @@ FirmwareInfo = provider(
 # ---------------------------------------------------------------------------
 # debug_elf: rebuild a firmware/stub ELF WITH debug info, for a GDB session.
 # ---------------------------------------------------------------------------
-# The flash build strips debug info (fastbuild default --strip=sometimes) and
-# doesn't compile with -g. For debugging we transition the ELF to --strip=never
-# and add -ggdb3 to the compile, without touching the normal build (the flashed
-# image is unaffected — it comes from the stripped path).
-def _debug_cfg_impl(settings, _attr):
-    return {
-        "//command_line_option:strip": "never",
-        "//command_line_option:copt": settings["//command_line_option:copt"] + ["-ggdb3"],
-    }
+# The toolchain already compiles every object with debug info (-g3 -ggdb; see
+# //toolchains/cc:cc_toolchain_config), but the flash build strips it from the ELF
+# (fastbuild's --strip=sometimes). So the ONLY thing this transition changes is
+# --strip=never: the debug ELF is byte-for-byte the same compile as the flashed
+# one, just not stripped. (The flashed image is unaffected — it's objcopy'd /
+# picotool'd from the ELF, dropping debug sections regardless.)
+def _debug_cfg_impl(_settings, _attr):
+    return {"//command_line_option:strip": "never"}
 
 _debug_cfg = transition(
     implementation = _debug_cfg_impl,
-    inputs = ["//command_line_option:copt"],
-    outputs = ["//command_line_option:strip", "//command_line_option:copt"],
+    inputs = [],
+    outputs = ["//command_line_option:strip"],
 )
 
 def _debug_elf_impl(ctx):

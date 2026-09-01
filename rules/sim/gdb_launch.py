@@ -6,9 +6,25 @@ run in a background thread) and the hardware debug launcher (server = `pyocd
 gdbserver`, run as a subprocess).
 """
 
+import os
 import socket
 import subprocess
 import time
+
+
+def source_dirs():
+    """Directories to add to GDB's source search path so DWARF file paths resolve.
+
+    Bazel records source paths relative to the exec root (`apps/...`, `libs/...`,
+    `external/<repo>/...`) but the compilation dir is an ephemeral sandbox that no
+    longer exists. Under `bazel run`, BUILD_WORKSPACE_DIRECTORY is the repo root and
+    `bazel-<name>` symlinks the exec root (a forest of both first-party packages and
+    external repos), so it resolves every recorded path."""
+    ws = os.environ.get("BUILD_WORKSPACE_DIRECTORY")
+    if not ws:
+        return []
+    execroot = os.path.join(ws, "bazel-" + os.path.basename(ws))
+    return [d for d in (execroot, ws) if os.path.isdir(d)]
 
 
 def wait_listening(port, timeout=20.0):
@@ -34,8 +50,10 @@ def run_gdb(gdb, elf, port, load=True, break_at=None, run=False):
     run       -> `continue` after setting the breakpoint.
     Returns GDB's exit code.
     """
-    args = [gdb, "-q", "-ex", "set pagination off", "-ex", "set confirm off",
-            "-ex", "target remote 127.0.0.1:%d" % port]
+    args = [gdb, "-q", "-ex", "set pagination off", "-ex", "set confirm off"]
+    for d in source_dirs():  # so DWARF file paths (apps/..., external/...) resolve
+        args += ["-ex", "directory %s" % d]
+    args += ["-ex", "target remote 127.0.0.1:%d" % port]
     if elf:
         args += ["-ex", "file %s" % elf]
     if load:
