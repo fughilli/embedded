@@ -1,5 +1,47 @@
 # WORKLOG
 
+## 🚧 UNICORN SIM — ARDUINO APP BOOT: RP2350 partial, ESP32 findings (2026-09-01)
+
+Goal: boot the arduino blink apps (//apps/blink) for ESP32 + RP2350 in-emulator.
+Findings + status per target (much harder than the bare-metal STM32G0 MVP):
+
+- **ESP32 classic (Xtensa LX6): IMPOSSIBLE in Unicorn.** Upstream Unicorn has NO
+  Xtensa backend (arches: arm, arm64, m68k, mips, ppc, riscv, s390x, sparc,
+  tricore, x86). Confirmed. Would need a different emulator (QEMU-xtensa).
+
+- **RP2350 (Cortex-M33): PARTIAL BOOT, green test.**
+  `//apps/blink:rp2350_boot_sim` boots the EXACT arduino-pico image from its reset
+  vector (`__VECTOR_TABLE`, after the 0x3000 boot metadata) through the pico-sdk
+  `runtime_init -> xosc_init -> pll_init` (clock init). Basic set that got it there
+  (all in //rules/sim/plugins/rp2350:rp2350_boot):
+    1. boot from the vector table, NOT e_entry (e_entry is the core1/bootrom-return
+       helper);
+    2. SIO CPUID (0xd0000000) reads 0 -> core0 path;
+    3. intercept `rom_func_lookup` -> return a no-op thumb stub (avoids emulating
+       the 32KB mask ROM); pico-sdk bootrom calls (reset/locking) then succeed;
+    4. permissive APB status reads (0xFFFFFFFF) -> LOCK/STABLE/ENABLE polls pass;
+    5. CLOCKS "SELECTED" reads -> 1 -> clock-source-select polls pass.
+  REMAINING to reach setup()/loop(): a faithful CLOCKS/PLL model — the per-
+  generator SELECTED one-hot must echo `1<<source` (a constant breaks the
+  `tst 1<<src` polls in clock_configure_internal for sources > 0), plus a TIMER
+  time source so delay() advances. Bounded but detailed RP2350-datasheet work.
+  Gotcha: redirecting PC from a Unicorn code hook must KEEP the thumb bit (writing
+  an even PC switches to ARM state -> invalid-instruction on 32-bit Thumb).
+
+- **ESP32-C6 (RISC-V rv32imac): FEASIBLE arch, LARGE effort — not started.**
+  Entry `call_start_cpu0` (0x40800828, HP SRAM); bulk of code is flash-cache-mapped
+  at 0x42000000 (loadable from the ELF segments). Boot jumps into the ESP mask ROM
+  at 0x40000018 within ~6 blocks — ROM funcs are called at FIXED addresses
+  pervasively (not one stub-able indirection like RP2350), so it needs the real
+  ESP32-C6 ROM binary mapped at 0x40000000. Then: cache/MMU, watchdog disable,
+  UART, the interrupt controller + systimer, and FreeRTOS scheduling before
+  app_main/setup/loop. Multi-week; RISC-V arch support is already in the harness.
+
+Framework additions this session (committed): RISC-V arch in the harness;
+configurable vector-table location (address or symbol); ELF symbol resolution in
+app mode; `Peripheral.code_hooks` (function/ROM interception — the generalization
+of a stub); RAM regions are now executable.
+
 ## ✅ UNICORN SIM — DEVICE MODEL AS A PLUGIN SYSTEM (2026-09-01)
 
 The virtual-peripheral device model is now a plugin registry so the client repos
