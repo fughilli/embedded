@@ -1,18 +1,20 @@
-/* Minimal GNU ld script for the STM32G081 (Arm Cortex-M0+).
+/* Minimal GNU ld script for the STM32G0 family (Arm Cortex-M0+).
  *
- * Memory map (RM0444 / STM32G081RB): 128 KB Flash at 0x08000000, 36 KB SRAM at
- * 0x20000000. The vector table lives at the start of Flash; the reset vector
- * points at Reset_Handler (see startup_stm32g081.c), and the initial stack
- * pointer is the top of SRAM. Sections are placed so Reset_Handler can copy
- * .data from Flash (_sidata) to SRAM (_sdata.._edata) and zero .bss
- * (_sbss.._ebss). --gc-sections (set in the toolchain) drops what's unused.
+ * TEMPLATE: @FLASH_K@ / @RAM_K@ are substituted per part by the
+ * `stm32g0_linker_script` macro (//libs/board/stm32g0:stm32g0.bzl). The whole G0
+ * line shares this layout — Flash at 0x08000000, SRAM at 0x20000000 (RM0444) —
+ * and differs only in the two sizes below. The vector table lives at the start
+ * of Flash; the reset vector points at Reset_Handler (see startup_stm32g0.c),
+ * and the initial stack pointer is the top of SRAM. Sections are placed so
+ * Reset_Handler can copy .data from Flash (_sidata) to SRAM (_sdata.._edata) and
+ * zero .bss (_sbss.._ebss). --gc-sections (set in the toolchain) drops unused.
  */
 ENTRY(Reset_Handler)
 
 MEMORY
 {
-    FLASH (rx)  : ORIGIN = 0x08000000, LENGTH = 128K
-    RAM   (rwx) : ORIGIN = 0x20000000, LENGTH = 36K
+    FLASH (rx)  : ORIGIN = 0x08000000, LENGTH = @FLASH_K@K
+    RAM   (rwx) : ORIGIN = 0x20000000, LENGTH = @RAM_K@K
 }
 
 /* Top of stack = end of RAM (full-descending stack). */

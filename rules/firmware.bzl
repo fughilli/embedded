@@ -26,7 +26,7 @@ _BOARD_PLATFORM = {
     "rp2350": Label("//platforms:rp2350"),
     "esp32c6": Label("//platforms:esp32c6"),
     "esp32": Label("//platforms:esp32"),
-    "stm32g081": Label("//platforms:stm32g081"),
+    "stm32g0": Label("//platforms:stm32g0"),
 }
 
 def _board_transition_impl(settings, attr):
@@ -65,10 +65,10 @@ def _firmware_binary_impl(ctx):
         args.add(elf)
         args.add(out)
         args.add("--family", "rp2350-arm-s")
-    elif board == "stm32g081":
+    elif board == "stm32g0":
         # Bare-metal STM32: strip the ELF to a raw Flash image. Flashes at the
-        # Flash origin 0x08000000 (st-flash / dfu-util). objcopy comes from the
-        # same @arm_gcc as the compiler.
+        # Flash origin 0x08000000 (pyOCD / st-flash / dfu-util). objcopy comes
+        # from the same @arm_gcc as the compiler.
         out = ctx.actions.declare_file(ctx.label.name + ".bin")
         tool = ctx.file._objcopy
         tool_files = ctx.attr._arm_gcc_files[DefaultInfo].files
@@ -112,7 +112,7 @@ firmware_binary = rule(
         ),
         "board": attr.string(
             mandatory = True,
-            values = ["rp2350", "esp32c6", "esp32", "stm32g081"],
+            values = ["rp2350", "esp32c6", "esp32", "stm32g0"],
             doc = "Which board to build for (drives the transition + packager).",
         ),
         "opt_mode": attr.string(

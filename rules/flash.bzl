@@ -150,7 +150,7 @@ pyocd_flash = rule(
     executable = True,
     doc = "Flash a firmware_binary's ELF to a connected target via pyOCD " +
           "(SWD/JTAG over a CMSIS-DAP or ST-Link probe). For MCUs without " +
-          "built-in DFU, e.g. the STM32G081.",
+          "built-in DFU, e.g. the STM32G0B1.",
     attrs = {
         "firmware": attr.label(
             mandatory = True,
@@ -158,7 +158,7 @@ pyocd_flash = rule(
         ),
         "target": attr.string(
             mandatory = True,
-            doc = "pyOCD target type (e.g. `stm32g081xx`). A chip outside " +
+            doc = "pyOCD target type (e.g. `stm32g0b1xx`). A chip outside " +
                   "pyOCD's built-ins needs its CMSIS pack: " +
                   "`bazel run //tools/pyocd -- pack install <target>`.",
         ),

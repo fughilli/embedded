@@ -1,9 +1,10 @@
-// STM32G081 board support: drive the on-board LED with bare register access
-// (no Arduino/HAL). Target is the NUCLEO-G081RB, whose green user LED (LD4) is
-// on PA5. Register addresses/bitfields are from RM0444.
+// STM32G0 board support: drive the on-board LED with bare register access (no
+// Arduino/HAL). Target is the NUCLEO-G0B1RE (and other G0 Nucleos), whose green
+// user LED (LD4) is on PA5. Register addresses/bitfields are from RM0444 and are
+// identical across the G0 family.
 #include <stdint.h>
 
-#include "libs/board/stm32g081/stm32g081.h"
+#include "libs/board/stm32g0/stm32g0.h"
 
 // --- Minimal register map (RM0444) -----------------------------------------
 #define RCC_BASE 0x40021000u

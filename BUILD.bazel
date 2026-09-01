@@ -8,7 +8,7 @@ alias(name = "blink_esp32c6", actual = "//apps/blink:esp32c6")
 
 alias(name = "blink_esp32", actual = "//apps/blink:esp32")
 
-alias(name = "blink_stm32g081", actual = "//apps/blink_stm32g081:stm32g081")
+alias(name = "blink_stm32g0b1", actual = "//apps/blink_stm32g0b1:stm32g0b1")
 
 alias(name = "rainbow_rp2350", actual = "//apps/rainbow:rp2350")
 

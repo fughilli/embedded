@@ -277,6 +277,6 @@ register_toolchains(
     "//toolchains/cc/rp2350_arm:cc_toolchain",
     "//toolchains/cc/esp32c6:cc_toolchain",
     "//toolchains/cc/esp32:cc_toolchain",
-    # STM32G081 (Cortex-M0+) — bare-metal, reuses @arm_gcc.
-    "//toolchains/cc/stm32g081:cc_toolchain",
+    # STM32G0 family (Cortex-M0+) — bare-metal, reuses @arm_gcc.
+    "//toolchains/cc/stm32g0:cc_toolchain",
 )

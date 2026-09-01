@@ -5,7 +5,7 @@
 # from a pip wheel: it is materialized from Nix (@libusb) and injected into
 # pyusb by the `nix_libusb` wrapper below. Use //tools/pyocd:pyocd directly
 # (`bazel run //tools/pyocd -- list`) or the `pyocd_flash` rule for flash targets
-# that lack built-in DFU (e.g. the STM32G081).
+# that lack built-in DFU (e.g. the STM32G0B1).
 load("@rules_python//python:defs.bzl", "py_binary", "py_library")
 load("@rules_python//python:pip.bzl", "compile_pip_requirements")
 

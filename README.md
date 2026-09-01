@@ -1,4 +1,4 @@
-# Firmware monorepo — ESP32-C6 + ESP32 (WROOM) + RP2350 + STM32G081 on Bazel
+# Firmware monorepo — ESP32-C6 + ESP32 (WROOM) + RP2350 + STM32G0 on Bazel
 
 Bare-metal firmware built with **Bazel (bzlmod)** using native `cc_library` /
 `cc_binary` rules. Cross toolchains, `picotool`/`esptool`, and Arduino core
@@ -8,12 +8,14 @@ bare-metal target triples.
 
 Status: **All four boards build green.** RP2350 (Arm Cortex-M33) → `.uf2`;
 ESP32-C6 (RISC-V rv32imac) and classic ESP32/WROOM (Xtensa LX6, dual core) →
-`.bin`; STM32G081 (Arm Cortex-M0+) → raw `.bin`. RP2350 and ESP32-C6 link a
+`.bin`; STM32G0 (Arm Cortex-M0+) → raw `.bin`. RP2350 and ESP32-C6 link a
 `no_std` Rust module into the firmware; the classic ESP32 substitutes a C++
 fallback (upstream rustc has no Xtensa backend — that needs the esp-rs fork).
-The STM32G081 is a **fully freestanding** target: no Arduino core, its own
-startup + linker script, reusing the RP2350's `@arm_gcc` arm-none-eabi GCC. See
-`WORKLOG.md` for the build/verify commands and the integration notes.
+The STM32G0 is a **fully freestanding** target: no Arduino core, its own startup
++ linker script, reusing the RP2350's `@arm_gcc` arm-none-eabi GCC. One toolchain
++ board support serves the whole G0 family (G031…G0B1/G0C1); a part differs only
+in its linker memory map and pyOCD target — the demo builds for the **STM32G0B1**
+(NUCLEO-G0B1RE). See `WORKLOG.md` for the build/verify commands and notes.
 
 ## Layout
 
@@ -22,10 +24,10 @@ startup + linker script, reusing the RP2350's `@arm_gcc` arm-none-eabi GCC. See
 | `.claude-container-overlay/Dockerfile` | Installs Nix + Bazelisk (needs container relaunch) |
 | `flake.nix`, `nix/` | Nix-provided toolchains + arduino-pico source; BUILD files exposing them |
 | `MODULE.bazel` | bzlmod: rule sets, Nix repos, Rust triples, toolchain registration |
-| `platforms/` | `board` constraint + `platform()` targets (rp2350, esp32c6, esp32, stm32g081) |
+| `platforms/` | `board` constraint + `platform()` targets (rp2350, esp32c6, esp32, stm32g0) |
 | `toolchains/cc/` | Reusable GCC-cross `cc_toolchain_config` + per-board `cc_toolchain` |
-| `libs/board/stm32g081/` | Bare-metal STM32G081 support: startup (vectors + reset), linker script, GPIO LED |
-| `apps/blink_stm32g081/` | Freestanding STM32G081 blink (no Arduino; `main()` entry) |
+| `libs/board/stm32g0/` | Bare-metal STM32G0 family support: startup (vectors + reset), linker-script template + per-part generator (`stm32g0.bzl`), GPIO LED |
+| `apps/blink_stm32g0b1/` | Freestanding STM32G0B1 blink (no Arduino; `main()` entry) |
 | `tools/pyocd/` | pyOCD flash driver — pip-vendored (rules_python) with libusb substituted from Nix |
 | `rules/embedded.bzl` | `embedded_binary` rule: platform transition wrapping a cc_binary |
 | `rules/firmware.bzl` | `firmware_binary` rule: transition + package a cc_binary → board `.uf2`/`.bin` |
@@ -52,9 +54,9 @@ bazel build //:blink_esp32c6                   # blink.bin  (alias)
 # Classic ESP32 / ESP32-WROOM (Xtensa LX6): flashable BIN
 bazel build //:blink_esp32                     # blink.bin  (alias)
 
-# STM32G081 (Arm Cortex-M0+): raw flashable BIN (bare-metal, no Arduino core)
-bazel build //:blink_stm32g081                 # stm32g081.bin  (alias)
-#   flash: st-flash write stm32g081.bin 0x08000000   (or dfu-util to 0x08000000)
+# STM32G0B1 (Arm Cortex-M0+): raw flashable BIN (bare-metal, no Arduino core)
+bazel build //:blink_stm32g0b1                 # stm32g0b1.bin  (alias)
+#   flash over SWD via pyOCD (below), or: st-flash write stm32g0b1.bin 0x08000000
 
 # FastLED rainbow chaser (64-LED strip) for any board
 bazel build //:rainbow_rp2350 //:rainbow_esp32c6 //:rainbow_esp32
@@ -69,9 +71,9 @@ bazel run //apps/blink:flash_esp32c6 -- --port /dev/ttyACM0   # extra args pass 
 bazel run //apps/blink:flash_esp32               # classic ESP32/WROOM (bootloader at 0x1000)
 bazel run //apps/rainbow:flash_rp2350            # same targets exist for the rainbow app
 
-# STM32G081 (no built-in USB DFU): flash the ELF over SWD via pyOCD + a probe.
-bazel run //tools/pyocd -- pack install stm32g081   # one-time: fetch the CMSIS pack
-bazel run //apps/blink_stm32g081:flash_stm32g081    # pyocd flash --target stm32g081xx
+# STM32G0B1 (no built-in USB DFU): flash the ELF over SWD via pyOCD + a probe.
+bazel run //tools/pyocd -- pack install stm32g0b1   # one-time: fetch the CMSIS pack
+bazel run //apps/blink_stm32g0b1:flash_stm32g0b1    # pyocd flash --target stm32g0b1xx
 ```
 
 Each `flash` target builds the firmware, then execs the Nix-provided tool over
@@ -79,7 +81,7 @@ the artifacts (rules in `rules/flash.bzl`).
 
 ### pyOCD as a hermetic flash driver (`//tools/pyocd`)
 
-For targets without a ROM DFU bootloader (the STM32G081, and any other
+For targets without a ROM DFU bootloader (the STM32G0B1, and any other
 CMSIS-DAP/ST-Link-attached chip), the flash driver is **pyOCD**, vendored
 hermetically: the Python package and its deps come from PyPI via `rules_python`
 (pinned in `tools/pyocd/requirements.lock`), while pyOCD's one native C library,

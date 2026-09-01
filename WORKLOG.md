@@ -3,7 +3,7 @@
 ## ✅ pyOCD VENDORED AS A HERMETIC FLASH DRIVER (2026-08-31)
 
 `//tools/pyocd` — pyOCD brought in via Bazel's Python mechanism (first use of
-rules_python in this repo), for flashing targets without ROM DFU (the STM32G081,
+rules_python in this repo), for flashing targets without ROM DFU (the STM32G0B1,
 any CMSIS-DAP/ST-Link chip). Split cleanly:
 
 - **Python deps from PyPI** via `rules_python` (1.5.4 — the 1.x line; 2.x needs
@@ -30,32 +30,40 @@ any CMSIS-DAP/ST-Link chip). Split cleanly:
 - **`pyocd_flash`** (rules/flash.bzl) wraps the py_binary: execs it via
   rlocation, staging its runfiles (hermetic interpreter + wheels + Nix libusb)
   alongside the firmware_binary's ELF. Wired at
-  `//apps/blink_stm32g081:flash_stm32g081` (target `stm32g081xx`; needs a
-  one-time `pyocd pack install stm32g081`).
+  `//apps/blink_stm32g0b1:flash_stm32g0b1` (target `stm32g0b1xx`; needs a
+  one-time `pyocd pack install stm32g0b1`).
 - **In-container caveat:** `pyocd list`/`flash` block inside libusb device
   enumeration (`usb/backend/libusb1.py:enumerate_devices`) because the container
   has no debug probe / usbfs — expected. Reaching that libusb call IS the proof
   the Nix libusb is wired; completion needs real hardware.
 
-## ✅ STM32G081 (CORTEX-M0+) BUILDS GREEN (2026-08-31)
+## ✅ STM32G0 FAMILY (CORTEX-M0+) BUILDS GREEN (2026-08-31)
 
-`bazel build //:blink_stm32g081` → valid STM32G081 image. Fourth board added
-end-to-end: platform + constraint (`armv6-m` / os:none / `stm32g081_board`),
-cc_toolchain, bare-metal board support, blink app, and a `firmware_binary`
-packager branch (`objcopy -O binary` → raw `.bin` for st-flash/dfu at
-0x08000000). NOT run on hardware — verified only via the ELF: `arm-none-eabi-size`
-= 576 B text / 1536 B bss, `objdump -f` = architecture `armv6s-m`, entry
-`0x08000199` (Reset_Handler|thumb), vector[0]=`0x20009000` (SP = RAM+36K),
-vector[1]=reset; `board_setup`/`board_set_led`/`main` all resolve.
+`bazel build //:blink_stm32g0b1` → valid STM32G0B1 image. Fourth board added
+end-to-end, generalized to the whole **G0 family**: platform + constraint
+(`armv6-m` / os:none / `stm32g0_board`), one Cortex-M0+ cc_toolchain, bare-metal
+board support, a blink app, and a `firmware_binary` packager branch
+(`objcopy -O binary` → raw `.bin` for pyOCD/st-flash/dfu at 0x08000000). NOT run
+on hardware — verified via the ELF: `objdump -f` = architecture `armv6s-m`, entry
+`0x08000199` (Reset_Handler|thumb), and the G0B1 memory map takes effect —
+vector[0] / `_estack` = `0x20024000` (SP = RAM top = 0x20000000 + 144K);
+`board_setup`/`board_set_led`/`main` all resolve.
+
+The whole G0 line (G031…G0B1/G0C1) shares ONE toolchain + board support; a part
+differs only in its linker memory map and pyOCD target. Both live in
+`//libs/board/stm32g0:stm32g0.bzl` (`STM32G0_VARIANTS` table +
+`stm32g0_linker_script` macro, which stamps `stm32g0.ld.tpl` via
+`expand_template`). Adding a part is a one-line table entry; the demo instantiates
+**STM32G0B1** (NUCLEO-G0B1RE, 512K Flash / 144K SRAM).
 
 What made STM32 different from the Arduino boards (for the next bare-metal chip):
 
 - **No Arduino core — fully freestanding.** The STM32 has no wired Arduino core,
   so it does NOT go through the `//libs/board:arduino_core` facade. It links its
-  own startup (`//libs/board/stm32g081/startup_stm32g081.c`: vector table +
-  `Reset_Handler`) and linker script (`STM32G081xx.ld`: 128K Flash @0x08000000,
-  36K SRAM @0x20000000) instead. Added a header-only `//libs/board:board_hdr`
-  (board.h with no core dep) for it to implement.
+  own startup (`//libs/board/stm32g0/startup_stm32g0.c`: vector table +
+  `Reset_Handler`, following the G0B1/G0C1 category-5 IRQ layout — the family
+  superset) and a generated linker script (Flash @0x08000000, SRAM @0x20000000)
+  instead. Added a header-only `//libs/board:board_hdr` (board.h, no core dep).
 - **Reuses @arm_gcc** (same arm-none-eabi GCC as the RP2350) — no new Nix dep to
   build. The toolchain differs only in `-mcpu=cortex-m0plus -mthumb
   -mfloat-abi=soft` (no FPU on armv6-m) and bare-metal link flags
@@ -64,11 +72,13 @@ What made STM32 different from the Arduino boards (for the next bare-metal chip)
   newlib's `__libc_init_array` pulls in `_init`/`_fini` from crti/crtn (omitted),
   and v6-m's `_init` trips a "dangerous relocation: unsupported relocation".
   Reset_Handler iterates `__preinit_array_*`/`__init_array_*` directly instead.
-- **The linker script is wired at the app**, not the toolchain: `//apps/blink_stm32g081`
-  passes `-T$(location //libs/board/stm32g081:linker_script)` via `linkopts` +
-  `additional_linker_inputs` (a board-agnostic toolchain can't hardcode one).
-- Demo LED is **PA5** (NUCLEO-G081RB LD4), driven by raw RCC/GPIO register access
-  (RM0444). `board_delay_ms` is a coarse HSI-16MHz busy-wait, not timer-accurate.
+- **The linker script is wired at the app**, not the toolchain: `//apps/blink_stm32g0b1`
+  generates its `.ld` (`stm32g0_linker_script`) and passes `-T$(location :g0b1_ld)`
+  via `linkopts` + `additional_linker_inputs` (a family-generic toolchain can't
+  hardcode one memory map).
+- Demo LED is **PA5** (NUCLEO-G0B1RE LD4), driven by raw RCC/GPIO register access
+  (RM0444; the register map is identical family-wide). `board_delay_ms` is a
+  coarse HSI-16MHz busy-wait, not timer-accurate.
 
 ## ✅ CLASSIC ESP32 / WROOM (XTENSA) BUILDS GREEN (2026-07-17, session 6)
 

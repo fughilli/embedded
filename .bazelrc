@@ -30,4 +30,4 @@ startup --host_jvm_args=-XX:+IgnoreUnrecognizedVMOptions --host_jvm_args=-XX:Use
 # these configs are only needed when building plain cc_* targets directly.)
 build:rp2350    --platforms=//platforms:rp2350
 build:esp32c6   --platforms=//platforms:esp32c6
-build:stm32g081 --platforms=//platforms:stm32g081
+build:stm32g0   --platforms=//platforms:stm32g0

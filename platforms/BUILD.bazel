@@ -28,7 +28,7 @@ constraint_value(
 )
 
 constraint_value(
-    name = "stm32g081_board",
+    name = "stm32g0_board",
     constraint_setting = ":board",
 )
 
@@ -67,17 +67,20 @@ platform(
     ],
 )
 
-# STM32G081 (Arm Cortex-M0+, armv6-m). Bare-metal, no Arduino core — the board
-# support ships its own startup + linker script and links against the same
+# STM32G0 family (Arm Cortex-M0+, armv6-m). Bare-metal, no Arduino core — the
+# board support ships its own startup + linker script and links against the same
 # @arm_gcc arm-none-eabi GCC as the RP2350. cpu:armv6-m is exactly the
 # Cortex-M0/M0+ profile, which (with os:none + the board constraint) resolves the
-# stm32g081 cc_toolchain. No Rust triple: the demo app is pure C/C++.
+# stm32g0 cc_toolchain. The whole G0 line (G031…G0B1/G0C1) shares this toolchain
+# and board support; a specific part differs only in its linker memory map (see
+# //libs/board/stm32g0:stm32g0.bzl) and pyOCD flash target. No Rust triple: the
+# demo app is pure C/C++.
 platform(
-    name = "stm32g081",
+    name = "stm32g0",
     constraint_values = [
         "@platforms//cpu:armv6-m",
         "@platforms//os:none",
-        ":stm32g081_board",
+        ":stm32g0_board",
     ],
 )
 
@@ -98,6 +101,6 @@ config_setting(
 )
 
 config_setting(
-    name = "is_stm32g081",
-    constraint_values = [":stm32g081_board"],
+    name = "is_stm32g0",
+    constraint_values = [":stm32g0_board"],
 )
