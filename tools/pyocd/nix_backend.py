@@ -1,12 +1,14 @@
-"""Make pyusb / pyOCD load the Nix-materialized libusb (and hidapi).
+"""Make pyusb / pyOCD load the Nix-materialized libusb.
 
 pyusb locates libusb through ``ctypes.util.find_library('usb-1.0')``, which on
 Linux consults ldconfig / gcc and *ignores* ``LD_LIBRARY_PATH`` and preloaded
-objects. Inside a hermetic Bazel runfiles tree there is no system libusb, so the
-lookup fails and pyusb reports "No backend available". We stage the Nix libusb
-next to this module (see the ``stage_nix_libs`` genrule) and point
-``find_library`` straight at it, so the Nix build is the library pyOCD actually
-dlopens — not the prebuilt blob inside the libusb-package wheel.
+objects (macOS is similar via dyld). Inside a hermetic Bazel runfiles tree there
+is no system libusb, so the lookup fails and pyusb reports "No backend
+available". We stage the Nix libusb next to this module (see the
+``stage_nix_libs`` genrule; a ``.so`` on Linux or ``.dylib`` on macOS, under a
+fixed name) and point ``find_library`` straight at it, so the Nix build is the
+library pyOCD actually dlopens — not the prebuilt blob inside the libusb-package
+wheel.
 """
 
 import ctypes
@@ -18,13 +20,11 @@ import os
 # need no runfiles library or unstable canonical repo name.
 _NIXLIB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_nixlib")
 
-# find_library(name) -> staged soname, covering the names pyusb / hidapi probe.
+# find_library(name) -> staged file, covering the names pyusb probes for libusb.
 _LIB_FOR_NAME = {
     "usb-1.0": "libusb-1.0.so.0",
     "libusb-1.0": "libusb-1.0.so.0",
     "usb": "libusb-1.0.so.0",
-    "hidapi-libusb": "libhidapi-libusb.so.0",
-    "hidapi": "libhidapi-libusb.so.0",
 }
 
 

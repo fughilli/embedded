@@ -7,40 +7,39 @@
 # (`bazel run //tools/pyocd -- list`) or the `pyocd_flash` rule for flash targets
 # that lack built-in DFU (e.g. the STM32G0B1).
 load("@rules_python//python:defs.bzl", "py_binary", "py_library")
-load("@rules_python//python:pip.bzl", "compile_pip_requirements")
+load("@rules_uv//uv:pip.bzl", "pip_compile")
 
 package(default_visibility = ["//visibility:public"])
 
-# requirements.in -> requirements.lock.
+# requirements.in -> requirements.lock, resolved by uv in UNIVERSAL mode: one lock
+# for every OS, with environment markers (so pyOCD's `hidapi ; platform_system !=
+# "Linux"` lands in the lock and the macOS/Windows builds resolve). Fast +
+# hermetic — uv is fetched via rules_multitool, no system uv/python needed.
 #   regenerate:  bazel run //tools/pyocd:requirements.update
 #   verify (CI): bazel test //tools/pyocd:requirements_test
-compile_pip_requirements(
+pip_compile(
     name = "requirements",
-    src = "requirements.in",
+    requirements_in = "requirements.in",
     requirements_txt = "requirements.lock",
+    universal = True,
 )
 
-# Stage the Nix libusb/hidapi shared objects under fixed sonames next to
-# nix_backend.py, so it can resolve them by __file__-relative path in runfiles.
+# Stage the Nix libusb shared object under a fixed name next to nix_backend.py,
+# so it can resolve it by __file__-relative path in runfiles. The source is the
+# real .so (Linux) or .dylib (macOS) selected in //nix:libusb.BUILD; ctypes loads
+# either by absolute path regardless of the staged filename's extension.
 genrule(
     name = "stage_nix_libs",
-    srcs = [
-        "@libusb//:lib",
-        "@hidapi//:lib",
-    ],
-    outs = [
-        "_nixlib/libusb-1.0.so.0",
-        "_nixlib/libhidapi-libusb.so.0",
-    ],
+    srcs = ["@libusb//:lib"],
+    outs = ["_nixlib/libusb-1.0.so.0"],
     cmd = "\n".join([
         "mkdir -p $(RULEDIR)/_nixlib",
         "cp $(location @libusb//:lib) $(RULEDIR)/_nixlib/libusb-1.0.so.0",
-        "cp $(location @hidapi//:lib) $(RULEDIR)/_nixlib/libhidapi-libusb.so.0",
     ]),
 )
 
-# Wrapper py_library: the Nix native libs (as runfiles) + the shim that makes
-# pyusb load them. This is the "binary deps substituted via Nix" target.
+# Wrapper py_library: the Nix libusb (as runfiles) + the shim that makes pyusb
+# load it. This is the "binary dep substituted via Nix" target.
 py_library(
     name = "nix_libusb",
     srcs = ["nix_backend.py"],

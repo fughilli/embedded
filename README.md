@@ -83,12 +83,15 @@ the artifacts (rules in `rules/flash.bzl`).
 
 For targets without a ROM DFU bootloader (the STM32G0B1, and any other
 CMSIS-DAP/ST-Link-attached chip), the flash driver is **pyOCD**, vendored
-hermetically: the Python package and its deps come from PyPI via `rules_python`
-(pinned in `tools/pyocd/requirements.lock`), while pyOCD's one native C library,
-**libusb**, is materialized from **Nix** (`@libusb`) rather than the prebuilt
-blob bundled in the `libusb-package` wheel. The `//tools/pyocd:nix_libusb`
-wrapper `py_library` stages the Nix `.so` and points pyusb's `find_library` at
-it, so the Nix build is what pyOCD actually `dlopen`s.
+hermetically: the Python package and its deps come from PyPI via `rules_python`,
+pinned in `tools/pyocd/requirements.lock` — a **universal** lock resolved by
+`uv` (via `rules_uv`) so one file covers Linux/macOS/Windows with environment
+markers (pyOCD pulls `hidapi` only off-Linux, so a single-platform lock would
+break the macOS build). pyOCD's one native C library, **libusb**, is materialized
+from **Nix** (`@libusb`) rather than the prebuilt blob bundled in the
+`libusb-package` wheel. The `//tools/pyocd:nix_libusb` wrapper `py_library`
+stages the Nix `.so` and points pyusb's `find_library` at it, so the Nix build
+is what pyOCD actually `dlopen`s.
 
 ```sh
 bazel run //tools/pyocd -- list           # enumerate probes (needs a probe + USB)
@@ -97,8 +100,10 @@ bazel run //tools/pyocd:verify_backend    # assert pyusb bound the Nix libusb (n
 ```
 
 `pyocd_flash` (in `rules/flash.bzl`) wraps this binary; point it at a
-`firmware_binary` and a pyOCD target type. Regenerate the lock after editing
-`tools/pyocd/requirements.in` with `bazel run //tools/pyocd:requirements.update`.
+`firmware_binary` and a pyOCD target type. Regenerate the universal lock after
+editing `tools/pyocd/requirements.in` with `bazel run
+//tools/pyocd:requirements.update` (uv, no system Python/uv needed);
+`bazel test //tools/pyocd:requirements_test` checks it is current.
 `list`/`flash` enumerate USB, so they only complete where a probe (and usbfs
 access) is present — reaching that libusb enumeration is itself proof the Nix
 libusb is wired in.
