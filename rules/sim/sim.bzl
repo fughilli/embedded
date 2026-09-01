@@ -28,6 +28,7 @@ inputs live in one place and the platform flows stub -> test. Only ARMv8-M
 """
 
 load("@rules_python//python:defs.bzl", "py_binary", "py_test")
+load("//rules:firmware.bzl", "debug_elf")
 
 # The GDB the .debug targets launch. armv6-m/armv8-m stubs + firmware use the
 # arm-none-eabi GDB from @arm_gcc; that's all we wire up so far.
@@ -315,11 +316,12 @@ def simulation_test(
     )
 
     # <name>.debug: interactive GDB under the emulator, broken at the first
-    # stimulus's entrypoint.
+    # stimulus's entrypoint. Debug the stub rebuilt with debug info.
+    debug_elf(name = name + "_dbgelf", firmware = stub, tags = ["manual"])
     _debug_binary(
         name = name + ".debug",
         mode = "test",
-        elf_target = stub,
+        elf_target = ":" + name + "_dbgelf",
         emu_target = ":" + name + "_emu",
         extra_args = ["--generator=%s" % generator_module],
         extra_deps = [generator, "//rules/sim:stimulus"],
@@ -428,10 +430,12 @@ def simulation_app(
     )
 
     # <name>.debug: interactive GDB under the emulator, broken at the app entry.
+    # Debug the exact image rebuilt with debug info (--strip=never + -ggdb3).
+    debug_elf(name = name + "_dbgelf", firmware = firmware, output_group = "elf", tags = ["manual"])
     _debug_binary(
         name = name + ".debug",
         mode = "app",
-        elf_target = ":" + name + "_elf",
+        elf_target = ":" + name + "_dbgelf",
         emu_target = ":" + name + "_emu",
         extra_args = ["--plugins=%s" % ",".join([_plugin_module(p) for p in plugins])],
         extra_deps = plugins,

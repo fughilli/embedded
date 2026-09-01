@@ -30,6 +30,51 @@ FirmwareInfo = provider(
     },
 )
 
+# ---------------------------------------------------------------------------
+# debug_elf: rebuild a firmware/stub ELF WITH debug info, for a GDB session.
+# ---------------------------------------------------------------------------
+# The flash build strips debug info (fastbuild default --strip=sometimes) and
+# doesn't compile with -g. For debugging we transition the ELF to --strip=never
+# and add -ggdb3 to the compile, without touching the normal build (the flashed
+# image is unaffected — it comes from the stripped path).
+def _debug_cfg_impl(settings, _attr):
+    return {
+        "//command_line_option:strip": "never",
+        "//command_line_option:copt": settings["//command_line_option:copt"] + ["-ggdb3"],
+    }
+
+_debug_cfg = transition(
+    implementation = _debug_cfg_impl,
+    inputs = ["//command_line_option:copt"],
+    outputs = ["//command_line_option:strip", "//command_line_option:copt"],
+)
+
+def _debug_elf_impl(ctx):
+    dep = ctx.attr.firmware[0]  # transitioned -> 1-element list
+    if ctx.attr.output_group:
+        elf = getattr(dep[OutputGroupInfo], ctx.attr.output_group).to_list()[0]
+    else:
+        elf = dep[DefaultInfo].files.to_list()[0]
+    out = ctx.actions.declare_file(ctx.label.name + ".elf")
+    ctx.actions.symlink(output = out, target_file = elf)
+    return [DefaultInfo(files = depset([out]))]
+
+debug_elf = rule(
+    implementation = _debug_elf_impl,
+    doc = "Republish a firmware/stub ELF rebuilt with debug info (--strip=never " +
+          "+ -ggdb3) for a GDB session.",
+    attrs = {
+        "firmware": attr.label(mandatory = True, cfg = _debug_cfg),
+        "output_group": attr.string(
+            doc = "Output group holding the ELF (e.g. `elf` for firmware_binary); " +
+                  "empty = the target's default output (e.g. a simulation_stub).",
+        ),
+        "_allowlist_function_transition": attr.label(
+            default = "@bazel_tools//tools/allowlists/function_transition_allowlist",
+        ),
+    },
+)
+
 # Board -> platform, resolved in THIS module's repo (so the transition targets
 # @firmware//platforms:* even when the rule is used from another module).
 _BOARD_PLATFORM = {

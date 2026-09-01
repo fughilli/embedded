@@ -12,6 +12,7 @@ CMSIS-DAP / ST-Link probe (pyocd gdbserver + arm-none-eabi-gdb).
 """
 
 load("@rules_python//python:defs.bzl", "py_binary")
+load("//rules:firmware.bzl", "debug_elf")
 
 # Canonical Bazel Bash runfiles library initializer (v3).
 _RUNFILES_INIT = r'''#!/usr/bin/env bash
@@ -196,10 +197,12 @@ def pyocd_debug(name, firmware, target, flash = True, frequency = "", **kwargs):
         bazel run //apps/blink_stm32g0b1:debug            # load + debug
         bazel run //apps/blink_stm32g0b1:debug -- --probe <uid>
     """
-    native.filegroup(
+    # Rebuild the ELF with debug info (--strip=never + -ggdb3) for the session.
+    debug_elf(
         name = name + "_elf",
-        srcs = [firmware],
+        firmware = firmware,
         output_group = "elf",
+        tags = ["manual"],
         visibility = ["//visibility:private"],
     )
     args = [
