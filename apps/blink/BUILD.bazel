@@ -61,8 +61,8 @@ simulation_app(
     checker = "rp2350_boot_checker.py",
     checker_module = "rp2350_boot_checker",
     firmware = ":rp2350",
-    max_cycles = 40000000,
+    max_cycles = 200000000,
     platform = ":rp2350_sim",
     plugins = ["//rules/sim/plugins/rp2350:rp2350_boot"],
-    size = "medium",
+    size = "small",
 )

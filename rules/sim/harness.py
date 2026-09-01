@@ -100,19 +100,31 @@ def _elf_symbols(elf):
     return syms
 
 
-def _load_pt_load(uc, elf):
-    """Write every PT_LOAD segment by VMA (.bss tail zero-filled). Returns the
-    (vaddr, image) list so callers can restore initial state later."""
+def _load_pt_load(uc, elf, use_paddr=False):
+    """Write every PT_LOAD segment into memory. Returns the (addr, image) list so
+    callers can restore initial state later.
+
+    Stub mode loads by VMA (with the .bss tail zero-filled): the harness calls
+    functions directly, skipping reset, so .data must already sit at its VMA.
+
+    Boot mode loads by *LMA* (``use_paddr``): it runs the firmware's real reset
+    path, whose crt0 copies .data from its load address (LMA, in flash) to its
+    VMA (RAM). Loading by VMA there would be wrong — crt0 would then copy the
+    *uninitialized* LMA (zeros) over it, corrupting initialized globals."""
     segments = []
     for seg in elf.iter_segments():
         if seg["p_type"] != "PT_LOAD":
             continue
-        vaddr = seg["p_vaddr"]
-        data = seg.data()
-        pad = seg["p_memsz"] - len(data)
-        image = data + (b"\x00" * pad if pad > 0 else b"")
-        uc.mem_write(vaddr, image)
-        segments.append((vaddr, image))
+        if use_paddr:
+            addr = seg["p_paddr"]
+            image = seg.data()  # the raw load image; crt0 does bss/data itself
+        else:
+            addr = seg["p_vaddr"]
+            data = seg.data()
+            pad = seg["p_memsz"] - len(data)
+            image = data + (b"\x00" * pad if pad > 0 else b"")
+        uc.mem_write(addr, image)
+        segments.append((addr, image))
     return segments
 
 
@@ -453,11 +465,13 @@ def boot_app(elf_path, emu_config, peripherals=(), max_cycles=None, count_instru
 
     with open(elf_path, "rb") as f:
         elf = ELFFile(f)
-        _load_pt_load(uc, elf)
+        _load_pt_load(uc, elf, use_paddr=True)  # boot runs crt0; load the LMA image
         symbols = _elf_symbols(elf)
 
     for p in peripherals:
         _install_peripheral(uc, p, symbols)
+    for p in peripherals:
+        p.attach(uc, symbols)
 
     vt = _resolve_vector_table(emu_config.get("vector_table"), symbols,
                                emu_config["regions"])

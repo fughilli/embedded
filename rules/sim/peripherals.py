@@ -83,6 +83,13 @@ class Peripheral(abc.ABC):
         `symbols` is the ELF's name -> address map. Default: none."""
         return ()
 
+    def attach(self, uc, symbols):
+        """Called once after memory is mapped, the ELF loaded, and the standard
+        MMIO/code hooks installed — with the live Unicorn engine and the ELF
+        symbol map. A model that needs to scan the loaded image or install its own
+        hooks (e.g. to emulate CPU-extension instructions the core lacks) does it
+        here. Default: nothing."""
+
     def done(self):
         """Return True once the app has exhibited enough behavior to judge; the
         harness then stops emulation. Default: never (rely on the cycle budget)."""
