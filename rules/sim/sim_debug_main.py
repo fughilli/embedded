@@ -42,7 +42,7 @@ def main():
     ap.add_argument("--elf", required=True)
     ap.add_argument("--emu", required=True)
     ap.add_argument("--gdb", required=True)
-    ap.add_argument("--port", type=int, default=1234)
+    ap.add_argument("--port", type=int, default=0)  # 0 = ephemeral (avoid clashes)
     ap.add_argument("--plugins", default="")
     ap.add_argument("--generator", default="")
     ap.add_argument("--break_at", default="")
@@ -76,16 +76,15 @@ def main():
         print("debugging first stimulus: %s" % stimuli[0].label(0))
 
     # Serve the GDB stub on the engine in a daemon thread; GDB drives execution.
+    stub = uc_gdbserver.GdbStub(uc, start_pc)
     ready = threading.Event()
-    t = threading.Thread(
-        target=lambda: uc_gdbserver.udbserver(uc, args.port, start_pc, ready=ready),
-        daemon=True)
+    t = threading.Thread(target=lambda: stub.serve(args.port, ready=ready), daemon=True)
     t.start()
     if not ready.wait(timeout=20):
-        sys.exit("gdbserver did not start listening on port %d" % args.port)
-    print("== udbserver on :%d — launching GDB (break at %s) ==" % (args.port, break_at))
+        sys.exit("gdbserver did not start listening")
+    print("== gdbserver on :%d — launching GDB (break at %s) ==" % (stub.port, break_at))
     # No `load` under the emulator: the image is already in emulated memory.
-    rc = gdb_launch.run_gdb(gdb, elf, args.port, load=False, break_at=break_at, run=False)
+    rc = gdb_launch.run_gdb(gdb, elf, stub.port, load=False, break_at=break_at, run=False)
     sys.exit(rc)
 
 

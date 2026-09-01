@@ -52,6 +52,7 @@ class GdbStub:
     def __init__(self, uc, start_pc=None):
         self.uc = uc
         self.breakpoints = set()
+        self.port = None  # the actual bound port (set by serve; ephemeral if 0)
         if start_pc is not None:
             uc.reg_write(_arm.UC_ARM_REG_PC, start_pc)
 
@@ -188,7 +189,8 @@ class GdbStub:
     def serve(self, port, ready=None):
         srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        srv.bind(("127.0.0.1", port))
+        srv.bind(("127.0.0.1", port))  # port 0 -> OS picks a free ephemeral port
+        self.port = srv.getsockname()[1]
         srv.listen(1)
         if ready is not None:
             ready.set()  # signal listening WITHOUT a probe connection (single accept)
