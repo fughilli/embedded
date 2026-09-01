@@ -76,9 +76,10 @@ What made STM32 different from the Arduino boards (for the next bare-metal chip)
   generates its `.ld` (`stm32g0_linker_script`) and passes `-T$(location :g0b1_ld)`
   via `linkopts` + `additional_linker_inputs` (a family-generic toolchain can't
   hardcode one memory map).
-- Demo LED is **PA5** (NUCLEO-G0B1RE LD4), driven by raw RCC/GPIO register access
-  (RM0444; the register map is identical family-wide). `board_delay_ms` is a
-  coarse HSI-16MHz busy-wait, not timer-accurate.
+- Demo LED is on **PD8**, driven by raw RCC/GPIO register access (RM0444; the
+  register map is identical family-wide). The port/pin are three `LED_*` defines
+  in `board_stm32g0.c` (port base + IOPENR clock bit + pin). `board_delay_ms` is
+  a coarse HSI-16MHz busy-wait, not timer-accurate.
 
 ## ✅ CLASSIC ESP32 / WROOM (XTENSA) BUILDS GREEN (2026-07-17, session 6)
 
