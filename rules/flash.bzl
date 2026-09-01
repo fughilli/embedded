@@ -131,7 +131,10 @@ def _pyocd_flash_impl(ctx):
     elf = ctx.attr.firmware[OutputGroupInfo].elf.to_list()[0]
     tool = ctx.executable._pyocd
 
-    argv = ['"$(rlocation %s)"' % _rloc(ctx, tool), "flash", "--target", "'%s'" % ctx.attr.target]
+    # --format elf: the `elf` output group is a symlink to the extension-less
+    # cc_binary, and pyOCD infers format from the resolved path's extension —
+    # which has none, so state it explicitly instead of relying on the name.
+    argv = ['"$(rlocation %s)"' % _rloc(ctx, tool), "flash", "--target", "'%s'" % ctx.attr.target, "--format", "elf"]
     if ctx.attr.frequency:
         argv += ["--frequency", "'%s'" % ctx.attr.frequency]
     argv.append('"$(rlocation %s)"' % _rloc(ctx, elf))
