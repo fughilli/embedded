@@ -22,6 +22,20 @@ bazel_dep(name = "bazel_skylib", version = "1.9.0")
 bazel_dep(name = "rules_pkg", version = "1.2.0")
 bazel_dep(name = "rules_rust", version = "0.71.3")
 
+# rules_python: hermetic interpreter + pip, used to vendor the pyOCD flash driver
+# (//tools/pyocd) from PyPI. Pinned to the 1.x line — 2.x requires Bazel >=8 and
+# this repo is on 7.7.1. 1.7.0 (not 1.5.4) so the root pin matches the version a
+# transitive dep of rules_uv raises the graph to (avoids a resolution warning).
+# pyOCD's native runtime lib (libusb) is NOT taken from a pip wheel; it is
+# materialized from Nix (below) and injected by the wrapper.
+bazel_dep(name = "rules_python", version = "1.7.0")
+
+# rules_uv: drives Astral's `uv` (hermetic, fetched via rules_multitool) to
+# compile requirements.lock. We use its UNIVERSAL mode so one lock covers every
+# OS with environment markers — pyOCD pulls hidapi only off-Linux, so a
+# single-platform (pip-tools) lock omits it and breaks the macOS build.
+bazel_dep(name = "rules_uv", version = "0.89.2")
+
 # Rust <-> C/C++ interop:
 #  - rules_rust_bindgen: generate Rust FFI from C headers (C -> Rust)
 #  - cxx.rs: the cxx crate's Bazel rules for safe C++ <-> Rust bridges
@@ -120,6 +134,13 @@ nix_pkg.attr(name = "bindgen_tool", attr = "rust-bindgen", repo = "@nixpkgs", bu
 nix_pkg.attr(name = "clang_tool", attr = "clang", repo = "@nixpkgs", build_file = "//nix:clang.BUILD")
 nix_pkg.attr(name = "libclang", attr = "llvmPackages.libclang.lib", repo = "@nixpkgs", build_file = "//nix:libclang.BUILD")
 
+# libusb for the pyOCD flash driver (//tools/pyocd). pyOCD's Python deps come
+# from pip, but the actual libusb C library its pyusb backend dlopens is provided
+# here by Nix (not the non-hermetic prebuilt blob bundled in the libusb-package
+# wheel). It's the one native lib pyOCD uses on every OS; HID-only CMSIS-DAP v1
+# probes (off-Linux) go through the pip `hidapi` wheel, so no Nix hidapi needed.
+nix_pkg.attr(name = "libusb", attr = "libusb1", repo = "@nixpkgs", build_file = "//nix:libusb.BUILD")
+
 # --- ESP32-C6 (Milestone 2) ------------------------------------------------
 # esptool — elf -> flashable .bin.
 nix_pkg.attr(
@@ -193,6 +214,7 @@ use_repo(
     "xtensa_gcc",
     "arduino_esp32",
     "mbedtls_src",
+    "libusb",
 )
 
 # ---------------------------------------------------------------------------
@@ -232,6 +254,36 @@ rust.toolchain(
 )
 use_repo(rust, "rust_toolchains")
 
+# ---------------------------------------------------------------------------
+# Python: hermetic interpreter + pip, for the pyOCD flash driver (//tools/pyocd).
+# The interpreter comes from rules_python (no system Python needed); pyocd and
+# its pure/wheel deps resolve from the committed requirements.lock. The one
+# native lib (libusb) is supplied by Nix, not pip — see //tools/pyocd.
+# ---------------------------------------------------------------------------
+PYTHON_VERSION = "3.11"
+
+python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+python.toolchain(
+    is_default = True,
+    python_version = PYTHON_VERSION,
+)
+
+pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
+pip.parse(
+    hub_name = "pypi",
+    python_version = PYTHON_VERSION,
+    requirements_lock = "//tools/pyocd:requirements.lock",
+)
+use_repo(pip, "pypi")
+
+# CMSIS Device Family Packs for pyOCD targets without built-in support (e.g. the
+# STM32G0B1). The extension turns //tools/pyocd:packs.lock into one downloaded
+# repo per pack + a @cmsis_packs hub; //tools/pyocd auto-passes them via --pack.
+# Regenerate the lock: `bazel run //tools/pyocd:update_packs`.
+cmsis = use_extension("//rules:cmsis_pack.bzl", "cmsis_packs")
+cmsis.parse(lock = "//tools/pyocd:packs.lock")
+use_repo(cmsis, "cmsis_packs")
+
 register_toolchains(
     "@rust_toolchains//:all",
     # bindgen toolchain backed by Nix prebuilt clang/libclang (the default
@@ -240,4 +292,6 @@ register_toolchains(
     "//toolchains/cc/rp2350_arm:cc_toolchain",
     "//toolchains/cc/esp32c6:cc_toolchain",
     "//toolchains/cc/esp32:cc_toolchain",
+    # STM32G0 family (Cortex-M0+) — bare-metal, reuses @arm_gcc.
+    "//toolchains/cc/stm32g0:cc_toolchain",
 )

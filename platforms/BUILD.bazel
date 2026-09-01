@@ -27,6 +27,11 @@ constraint_value(
     constraint_setting = ":board",
 )
 
+constraint_value(
+    name = "stm32g0_board",
+    constraint_setting = ":board",
+)
+
 # RP2350 in Arm Cortex-M33 mode. cpu:armv8-m is exactly the Cortex-M33 profile
 # and is what rules_rust maps thumbv8m.main-none-eabihf to, so this single set
 # resolves BOTH the cc_toolchain and the Rust toolchain.
@@ -62,6 +67,23 @@ platform(
     ],
 )
 
+# STM32G0 family (Arm Cortex-M0+, armv6-m). Bare-metal, no Arduino core — the
+# board support ships its own startup + linker script and links against the same
+# @arm_gcc arm-none-eabi GCC as the RP2350. cpu:armv6-m is exactly the
+# Cortex-M0/M0+ profile, which (with os:none + the board constraint) resolves the
+# stm32g0 cc_toolchain. The whole G0 line (G031…G0B1/G0C1) shares this toolchain
+# and board support; a specific part differs only in its linker memory map (see
+# //libs/board/stm32g0:stm32g0.bzl) and pyOCD flash target. No Rust triple: the
+# demo app is pure C/C++.
+platform(
+    name = "stm32g0",
+    constraint_values = [
+        "@platforms//cpu:armv6-m",
+        "@platforms//os:none",
+        ":stm32g0_board",
+    ],
+)
+
 # config_settings so libraries can select() on the active board.
 config_setting(
     name = "is_rp2350",
@@ -76,4 +98,9 @@ config_setting(
 config_setting(
     name = "is_esp32",
     constraint_values = [":esp32_board"],
+)
+
+config_setting(
+    name = "is_stm32g0",
+    constraint_values = [":stm32g0_board"],
 )

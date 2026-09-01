@@ -1,0 +1,75 @@
+# STM32G0 family (Arm Cortex-M0+) cc_toolchain: our reusable config rule + the
+# same Nix arm-none-eabi GCC (@arm_gcc) used by the RP2350, gated to the
+# //platforms:stm32g0 platform. One toolchain serves the whole G0 line
+# (G031…G0B1/G0C1) — they share the Cortex-M0+ ISA; only the linker memory map
+# differs per part.
+load("//toolchains/cc:cc_toolchain_config.bzl", "cc_toolchain_config")
+
+package(default_visibility = ["//visibility:public"])
+
+# Cortex-M0+ bare-metal flags. The STM32G0 core is armv6-m with NO FPU, so this
+# is a pure soft-float build (-mfloat-abi=soft): no -mfpu, no VFP. These match
+# ST's CubeG0 defaults across the family.
+_CORE_ARCH_FLAGS = [
+    "-mcpu=cortex-m0plus",
+    "-mthumb",
+    "-mfloat-abi=soft",
+]
+
+cc_toolchain_config(
+    name = "config",
+    toolchain_identifier = "stm32g0-arm-none-eabi",
+    target_cpu = "cortex-m0plus",
+    target_system_name = "arm-none-eabi",
+    gcc = "@arm_gcc//:gcc",
+    gpp = "@arm_gcc//:g++",
+    ar = "@arm_gcc//:ar",
+    strip = "@arm_gcc//:strip",
+    # Bare-metal, no Arduino core: newlib-nano libc/libm, newlib's syscall stubs
+    # (nosys.specs), and -nostartfiles because //libs/board/stm32g0 supplies its
+    # own Reset_Handler + vector table (crt0 would fight it). --gc-sections drops
+    # the unreferenced newlib startup that nosys still pulls in.
+    compile_flags = _CORE_ARCH_FLAGS + [
+        "-ffunction-sections",
+        "-fdata-sections",
+        "-ffreestanding",
+        "-fno-exceptions",
+        "-fno-unwind-tables",
+        "-no-canonical-prefixes",
+    ],
+    link_flags = _CORE_ARCH_FLAGS + [
+        "--specs=nano.specs",
+        "--specs=nosys.specs",
+        "-nostartfiles",
+        "-Wl,--gc-sections",
+        # NOTE: no -no-canonical-prefixes at link (kept for compile). With it, gcc
+        # hands ld the LTO plugin via a path relative to a relative argv[0]; macOS'
+        # hardened runtime refuses to dlopen a relative path ("relative path not
+        # allowed in hardened program"). Canonical (absolute) prefixes load fine
+        # on both macOS and Linux.
+    ],
+)
+
+cc_toolchain(
+    name = "stm32g0_cc",
+    all_files = "@arm_gcc//:all",
+    ar_files = "@arm_gcc//:all",
+    compiler_files = "@arm_gcc//:all",
+    dwp_files = "@arm_gcc//:all",
+    linker_files = "@arm_gcc//:all",
+    objcopy_files = "@arm_gcc//:all",
+    strip_files = "@arm_gcc//:all",
+    toolchain_config = ":config",
+)
+
+# Registered in MODULE.bazel; resolves when the target platform is stm32g0.
+toolchain(
+    name = "cc_toolchain",
+    target_compatible_with = [
+        "@platforms//cpu:armv6-m",
+        "@platforms//os:none",
+        "//platforms:stm32g0_board",
+    ],
+    toolchain = ":stm32g0_cc",
+    toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
+)

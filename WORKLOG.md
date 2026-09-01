@@ -1,5 +1,119 @@
 # WORKLOG
 
+## ✅ CMSIS DEVICE FAMILY PACKS VENDORED FOR pyOCD (2026-09-01)
+
+A pyOCD `--target` outside its built-ins (the STM32G0B1 → `stm32g0b1rctx`, an
+STM32G0B1RCT6) needs a CMSIS Device Family Pack. Rather than a stateful
+`pyocd pack install` into `~/.cache`, packs are vendored hermetically via a new
+ruleset (`rules/cmsis_pack.bzl`) that mirrors the pip lockfile flow:
+
+- `tools/pyocd/packs.in` (targets, one/line) → `bazel run //tools/pyocd:update_packs`
+  → `tools/pyocd/packs.lock` (JSON: per-pack url+sha256). The generator
+  (`update_packs.py`) resolves each target → pack via `cmsis_pack_manager`'s
+  index (the same index `pyocd pack find` uses), derives the pack URL from the
+  pack PDSC's `<url>`, downloads + hashes it. Verified: the generated lock is
+  byte-identical to the hand-checked seed (Keil.STM32G0xx_DFP 2.1.0).
+- The `cmsis_packs` module extension `json.decode`s the lock and creates **one
+  `@cmsis_pack_<slug>` repo per pack** (http download, sha256-pinned) + a
+  `@cmsis_packs` hub that symlinks them all under `packs/`. //tools/pyocd depends
+  on `@cmsis_packs//:all_packs` (runfiles) and `cmsis_pack_inject.py` auto-adds
+  `--pack <file>` for each to pack-aware subcommands (flash/list/erase/...).
+- Result: `bazel run //tools/pyocd -- list --targets --source pack` shows
+  `stm32g0b1rctx` (43 G0B1 parts) with NO manual pack install — proven on Linux.
+
+Gotcha that cost a debug cycle: locating the packs in runfiles by splitting the
+module path on `/_main/` picked the wrong root — the **execroot** path itself
+contains `/_main/` (`.../execroot/_main/bazel-out/.../X.runfiles/_main/...`).
+Anchor on `.runfiles/` instead. Also: the STM32G0B1RCT6 is 256K Flash / 144K
+SRAM, so the demo variant is now `stm32g0b1` = (256K, 144K, `stm32g0b1rctx`).
+
+## ✅ pyOCD VENDORED AS A HERMETIC FLASH DRIVER (2026-08-31)
+
+`//tools/pyocd` — pyOCD brought in via Bazel's Python mechanism (first use of
+rules_python in this repo), for flashing targets without ROM DFU (the STM32G0B1,
+any CMSIS-DAP/ST-Link chip). Split cleanly:
+
+- **Python deps from PyPI** via `rules_python` (1.5.4 — the 1.x line; 2.x needs
+  Bazel >=8 and we're on 7.7.1). `pip.parse(hub_name="pypi")` consumes
+  `tools/pyocd/requirements.lock`, a UNIVERSAL lock resolved by `uv` via
+  `rules_uv` (`pip_compile(universal=True)`; `bazel run
+  //tools/pyocd:requirements.update`). Universal (not pip-tools) is load-bearing:
+  pyOCD needs `hidapi` only off-Linux (`; platform_system != "Linux"`), so a
+  single-platform lock omits it and the macOS build fails to find `@pypi//hidapi`
+  — the universal lock carries it with a `sys_platform != 'linux'` marker. pyocd's
+  native deps (capstone, cmsis-pack-manager) ship aarch64 + x86_64 manylinux
+  wheels, so no from-source compiles. Interpreter is rules_python's hermetic 3.11.
+- **libusb from Nix, NOT the wheel.** pyOCD's one native C lib is libusb; the
+  `libusb-package` wheel bundles a prebuilt blob. Instead `@libusb`
+  (nixpkgs `libusb1`) is materialized like esptool/picotool, and the wrapper
+  `py_library //tools/pyocd:nix_libusb` stages the lib (`.so` on Linux /
+  `.dylib` on macOS, selected in `//nix:libusb.BUILD`) next to `nix_backend.py`
+  (via the `stage_nix_libs` genrule, fixed name) and points pyusb's
+  `find_library` at it. (No Nix hidapi: pyOCD uses libusb for HID on Linux and
+  the pip `hidapi` wheel elsewhere.) Verified hardware-free:
+  `bazel run //tools/pyocd:verify_backend` asserts `find_library('usb-1.0')` and
+  the live `usb.backend.libusb1` backend both resolve to the staged Nix lib.
+- **Wiring gotcha:** pyusb finds libusb via `ctypes.util.find_library`, which
+  ignores `LD_LIBRARY_PATH` and preloaded objects (it shells ldconfig/gcc) — so
+  a bare preload leaves pyusb with "no backend". The fix is to patch
+  `find_library` (globally + `usb.libloader`) to return the staged path; a
+  RTLD_GLOBAL preload alone is insufficient. nix_backend.py resolves the `.so`
+  by `__file__`-relative path (staged under a fixed soname), avoiding the
+  unstable canonical Nix repo name in runfiles.
+- **`pyocd_flash`** (rules/flash.bzl) wraps the py_binary: execs it via
+  rlocation, staging its runfiles (hermetic interpreter + wheels + Nix libusb)
+  alongside the firmware_binary's ELF. Wired at
+  `//apps/blink_stm32g0b1:flash_stm32g0b1` (target `stm32g0b1xx`; needs a
+  one-time `pyocd pack install stm32g0b1`).
+- **In-container caveat:** `pyocd list`/`flash` block inside libusb device
+  enumeration (`usb/backend/libusb1.py:enumerate_devices`) because the container
+  has no debug probe / usbfs — expected. Reaching that libusb call IS the proof
+  the Nix libusb is wired; completion needs real hardware.
+
+## ✅ STM32G0 FAMILY (CORTEX-M0+) BUILDS GREEN (2026-08-31)
+
+`bazel build //:blink_stm32g0b1` → valid STM32G0B1 image. Fourth board added
+end-to-end, generalized to the whole **G0 family**: platform + constraint
+(`armv6-m` / os:none / `stm32g0_board`), one Cortex-M0+ cc_toolchain, bare-metal
+board support, a blink app, and a `firmware_binary` packager branch
+(`objcopy -O binary` → raw `.bin` for pyOCD/st-flash/dfu at 0x08000000). NOT run
+on hardware — verified via the ELF: `objdump -f` = architecture `armv6s-m`, entry
+`0x08000199` (Reset_Handler|thumb), and the G0B1 memory map takes effect —
+vector[0] / `_estack` = `0x20024000` (SP = RAM top = 0x20000000 + 144K);
+`board_setup`/`board_set_led`/`main` all resolve.
+
+The whole G0 line (G031…G0B1/G0C1) shares ONE toolchain + board support; a part
+differs only in its linker memory map and pyOCD target. Both live in
+`//libs/board/stm32g0:stm32g0.bzl` (`STM32G0_VARIANTS` table +
+`stm32g0_linker_script` macro, which stamps `stm32g0.ld.tpl` via
+`expand_template`). Adding a part is a one-line table entry; the demo instantiates
+**STM32G0B1** (NUCLEO-G0B1RE, 512K Flash / 144K SRAM).
+
+What made STM32 different from the Arduino boards (for the next bare-metal chip):
+
+- **No Arduino core — fully freestanding.** The STM32 has no wired Arduino core,
+  so it does NOT go through the `//libs/board:arduino_core` facade. It links its
+  own startup (`//libs/board/stm32g0/startup_stm32g0.c`: vector table +
+  `Reset_Handler`, following the G0B1/G0C1 category-5 IRQ layout — the family
+  superset) and a generated linker script (Flash @0x08000000, SRAM @0x20000000)
+  instead. Added a header-only `//libs/board:board_hdr` (board.h, no core dep).
+- **Reuses @arm_gcc** (same arm-none-eabi GCC as the RP2350) — no new Nix dep to
+  build. The toolchain differs only in `-mcpu=cortex-m0plus -mthumb
+  -mfloat-abi=soft` (no FPU on armv6-m) and bare-metal link flags
+  (`--specs=nano.specs --specs=nosys.specs -nostartfiles -Wl,--gc-sections`).
+- **Walk `.init_array` by hand, not `__libc_init_array`.** With `-nostartfiles`,
+  newlib's `__libc_init_array` pulls in `_init`/`_fini` from crti/crtn (omitted),
+  and v6-m's `_init` trips a "dangerous relocation: unsupported relocation".
+  Reset_Handler iterates `__preinit_array_*`/`__init_array_*` directly instead.
+- **The linker script is wired at the app**, not the toolchain: `//apps/blink_stm32g0b1`
+  generates its `.ld` (`stm32g0_linker_script`) and passes `-T$(location :g0b1_ld)`
+  via `linkopts` + `additional_linker_inputs` (a family-generic toolchain can't
+  hardcode one memory map).
+- Demo LED is on **PD8**, driven by raw RCC/GPIO register access (RM0444; the
+  register map is identical family-wide). The port/pin are three `LED_*` defines
+  in `board_stm32g0.c` (port base + IOPENR clock bit + pin). `board_delay_ms` is
+  a coarse HSI-16MHz busy-wait, not timer-accurate.
+
 ## ✅ CLASSIC ESP32 / WROOM (XTENSA) BUILDS GREEN (2026-07-17, session 6)
 
 `bazel build //:blink_esp32 //:rainbow_esp32` → valid ESP32 images (esptool

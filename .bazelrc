@@ -28,5 +28,6 @@ startup --host_jvm_args=-XX:+IgnoreUnrecognizedVMOptions --host_jvm_args=-XX:Use
 # `bazel build --config=rp2350 //...` retargets the whole build to the board.
 # (The embedded_binary rule sets the platform per-target via a transition, so
 # these configs are only needed when building plain cc_* targets directly.)
-build:rp2350  --platforms=//platforms:rp2350
-build:esp32c6 --platforms=//platforms:esp32c6
+build:rp2350    --platforms=//platforms:rp2350
+build:esp32c6   --platforms=//platforms:esp32c6
+build:stm32g0   --platforms=//platforms:stm32g0

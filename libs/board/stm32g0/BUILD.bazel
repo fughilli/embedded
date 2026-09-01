@@ -1,0 +1,27 @@
+# STM32G0 family bare-metal board support: startup (vector table + Reset_Handler),
+# the LED/GPIO driver implementing //libs/board:board.h, and the per-part linker
+# script template + generator. Unlike the Arduino boards this pulls in NO core —
+# it's a freestanding build against @arm_gcc (see //toolchains/cc/stm32g0).
+package(default_visibility = ["//visibility:public"])
+
+# Board-support code linked into every stm32g0 app. `alwayslink` keeps the vector
+# table + Reset_Handler (only reachable from the reset vector, so --gc-sections /
+# the linker would otherwise drop them). Serves the whole G0 family.
+cc_library(
+    name = "support",
+    srcs = [
+        "board_stm32g0.c",
+        "startup_stm32g0.c",
+    ],
+    hdrs = ["stm32g0.h"],
+    # `#include "libs/board/..."` resolves against the repo root via -iquote.
+    alwayslink = True,
+    target_compatible_with = ["//platforms:stm32g0_board"],
+    deps = ["//libs/board:board_hdr"],
+)
+
+# Linker script template — the memory sizes are stamped per part by
+# `stm32g0_linker_script` (stm32g0.bzl); an app links the generated `.ld` via
+# `additional_linker_inputs` + a `-T $(location ...)` linkopt (see
+# //apps/blink_stm32g0b1).
+exports_files(["stm32g0.ld.tpl"])
