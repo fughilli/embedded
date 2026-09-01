@@ -11,3 +11,9 @@
 # Regenerate the lock: bazel run //rules/sim:requirements.update
 unicorn==2.1.4
 pyelftools>=0.31
+
+# udbserver: a GDB remote-stub server for a Unicorn instance (used by the sim's
+# `.debug` targets). It dlopens libunicorn.so.2 and operates on our engine handle,
+# so it must share the Nix libunicorn — importing `unicorn` first (which loads it)
+# makes the dynamic loader reuse it by soname.
+udbserver==0.3.0

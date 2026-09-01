@@ -27,6 +27,7 @@ filegroup(
         "nm",
         "size",
         "gcc-ranlib",
+        "gdb",
     ]
 ]
 

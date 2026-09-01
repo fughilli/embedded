@@ -6,7 +6,12 @@ build the firmware as a normal dependency, then exec the Nix-provided tool over
 the artifacts. Extra CLI args pass through, e.g.:
 
     bazel run //apps/blink_esp32c6:flash -- --port /dev/ttyACM0
+
+`pyocd_debug` opens an interactive GDB session on a connected target over a
+CMSIS-DAP / ST-Link probe (pyocd gdbserver + arm-none-eabi-gdb).
 """
+
+load("@rules_python//python:defs.bzl", "py_binary")
 
 # Canonical Bazel Bash runfiles library initializer (v3).
 _RUNFILES_INIT = r'''#!/usr/bin/env bash
@@ -177,3 +182,51 @@ pyocd_flash = rule(
         "_bash_runfiles": attr.label(default = "@bazel_tools//tools/bash/runfiles"),
     },
 )
+
+# ---------------------------------------------------------------------------
+# pyocd_debug — interactive GDB on a real target via pyOCD + arm-none-eabi-gdb
+# ---------------------------------------------------------------------------
+def pyocd_debug(name, firmware, target, flash = True, frequency = "", **kwargs):
+    """An interactive GDB session on a connected target over a debug probe.
+
+    `firmware` is a firmware_binary (its `elf` output group is loaded for symbols
+    and, unless `flash = False`, flashed). `flash = False` attaches to and debugs
+    an already-running target. `target` is the pyOCD target type (e.g. stm32g0b1xx).
+
+        bazel run //apps/blink_stm32g0b1:debug            # load + debug
+        bazel run //apps/blink_stm32g0b1:debug -- --probe <uid>
+    """
+    native.filegroup(
+        name = name + "_elf",
+        srcs = [firmware],
+        output_group = "elf",
+        visibility = ["//visibility:private"],
+    )
+    args = [
+        "--elf=$(rlocationpath :%s_elf)" % name,
+        "--target=%s" % target,
+        "--gdb=$(rlocationpath @arm_gcc//:gdb)",
+        "--pyocd=$(rlocationpath //tools/pyocd:pyocd)",
+    ]
+    if flash:
+        args.append("--load")
+    if frequency:
+        args.append("--frequency=%s" % frequency)
+    py_binary(
+        name = name,
+        srcs = ["//tools/pyocd:pyocd_debug_main.py"],
+        main = "//tools/pyocd:pyocd_debug_main.py",
+        args = args,
+        data = [
+            ":" + name + "_elf",
+            "@arm_gcc//:gdb",
+            "@arm_gcc//:all",
+            "//tools/pyocd:pyocd",
+        ],
+        deps = [
+            "//rules/sim:gdb_launch",
+            "@rules_python//python/runfiles",
+        ],
+        tags = ["manual"],  # a bazel-run hardware tool, not built by //...
+        **kwargs
+    )

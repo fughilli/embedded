@@ -27,7 +27,36 @@ inputs live in one place and the platform flows stub -> test. Only ARMv8-M
 (Cortex-M33) is wired up so far; add architectures to _ARCH below.
 """
 
-load("@rules_python//python:defs.bzl", "py_test")
+load("@rules_python//python:defs.bzl", "py_binary", "py_test")
+
+# The GDB the .debug targets launch. armv6-m/armv8-m stubs + firmware use the
+# arm-none-eabi GDB from @arm_gcc; that's all we wire up so far.
+_GDB = "@arm_gcc//:gdb"
+_GDB_FILES = "@arm_gcc//:all"
+
+def _debug_binary(name, mode, elf_target, emu_target, extra_args, extra_deps, extra_data):
+    """A `<name>.debug` py_binary: brings up udbserver on the Unicorn engine and
+    launches GDB attached to it, halted at the entry point."""
+    py_binary(
+        name = name,
+        srcs = ["//rules/sim:sim_debug_main.py"],
+        main = "//rules/sim:sim_debug_main.py",
+        args = [
+            "--mode=%s" % mode,
+            "--elf=$(rlocationpath %s)" % elf_target,
+            "--emu=$(rlocationpath %s)" % emu_target,
+            "--gdb=$(rlocationpath %s)" % _GDB,
+        ] + extra_args,
+        data = [elf_target, emu_target, _GDB, _GDB_FILES] + extra_data,
+        deps = [
+            "//rules/sim:harness",
+            "//rules/sim:peripherals",
+            "//rules/sim:gdb_launch",
+            "//rules/sim:uc_gdbserver",
+            "@rules_python//python/runfiles",
+        ] + extra_deps,
+        tags = ["manual"],  # a bazel-run debug tool, not built by //...
+    )
 
 SimulationPlatformInfo = provider(
     doc = "A simulation device model: memory map + arch + generated build/runtime files.",
@@ -285,6 +314,18 @@ def simulation_test(
         **kwargs
     )
 
+    # <name>.debug: interactive GDB under the emulator, broken at the first
+    # stimulus's entrypoint.
+    _debug_binary(
+        name = name + ".debug",
+        mode = "test",
+        elf_target = stub,
+        emu_target = ":" + name + "_emu",
+        extra_args = ["--generator=%s" % generator_module],
+        extra_deps = [generator, "//rules/sim:stimulus"],
+        extra_data = [],
+    )
+
 # ---------------------------------------------------------------------------
 # Peripheral plugins — the device-model extension point
 # ---------------------------------------------------------------------------
@@ -384,4 +425,15 @@ def simulation_app(
         deps = deps,
         size = kwargs.pop("size", "medium"),
         **kwargs
+    )
+
+    # <name>.debug: interactive GDB under the emulator, broken at the app entry.
+    _debug_binary(
+        name = name + ".debug",
+        mode = "app",
+        elf_target = ":" + name + "_elf",
+        emu_target = ":" + name + "_emu",
+        extra_args = ["--plugins=%s" % ",".join([_plugin_module(p) for p in plugins])],
+        extra_deps = plugins,
+        extra_data = [],
     )

@@ -11,3 +11,7 @@ result-*
 # Editors / OS
 *.swp
 .DS_Store
+
+# Python bytecode from local sim tooling runs
+__pycache__/
+*.pyc

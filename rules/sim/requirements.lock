@@ -6,6 +6,14 @@ pyelftools==0.33 \
     --hash=sha256:660d82dcbeb8e83d1702bd97f223f761625da06111c0cc988eac6b8ab0c1b61f \
     --hash=sha256:f215ad5f47d3f1373a21496a6c9e0707c622840d0622f23ff7ce08678b020036
     # via -r rules/sim/requirements.in
+udbserver==0.3.0 \
+    --hash=sha256:804fd4fb9611e81a6cf63d41ad29540212e2a8ecf99d4d4967bbf6733d7e5820 \
+    --hash=sha256:8a400cbaae8a0fbee1b889dabd0577a4d0c9b921c475d416aea46f28cfc9dff0 \
+    --hash=sha256:da9c1ba2609f20f1d794e10f2c9800f586fd29cf408d4ad6c00e8cf7209d23b5 \
+    --hash=sha256:e37d5c87b12f02b6d5b4a2c3e6c4d618ebe3a4c6348113b187cce303afd2eb41 \
+    --hash=sha256:ee85ea753459635f28f74cf184ef64ba09f54beca16e94251a7a8bf2caa6c604 \
+    --hash=sha256:fd1f4482c766c2082234a3e0a3a3be34870ce136263c387e84a02022197fbf0d
+    # via -r rules/sim/requirements.in
 unicorn==2.1.4 \
     --hash=sha256:00567a70e323f749b419cd86bee4f9115beab7ebba32194581c090cbb7c59cff \
     --hash=sha256:01d744ba01c5cc68f1d7afe3d183f1868720fd440ec4eaedc4d1d5d9bf54b84c \
@@ -28,4 +36,6 @@ unicorn==2.1.4 \
     --hash=sha256:d348a90ee90219d141cb115ef8ed7e3fd1af42afaee105f7580761d775b25e32 \
     --hash=sha256:d6c93e0f60328d8f4a1792af3f834137a28050fcc2305f2ec01efe8558a9844e \
     --hash=sha256:d7107500c64ce5c168fbff6bef9485b5db1350050036f4cea568650cf8bdbdf5
-    # via -r rules/sim/requirements.in
+    # via
+    #   -r rules/sim/requirements.in
+    #   udbserver

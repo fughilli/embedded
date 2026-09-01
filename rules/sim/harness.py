@@ -300,6 +300,31 @@ class Simulator:
             return count
         return count * tm.get("cycles_per_instruction", 1)
 
+    def prepare(self, stim, index=0):
+        """Set up a stimulus's call frame (args in r0..r3, SP, LR = return
+        sentinel, PC = the entrypoint) WITHOUT running it — for the .debug
+        launcher, which then breaks at the entrypoint and hands control to GDB.
+        Returns the entrypoint address."""
+        uc = self.uc
+        self._reset_memory()
+        reg_vals = []
+        bump = self.heap_start
+        for a in stim.args:
+            if isinstance(a, Buffer):
+                addr = (bump + 7) & ~7
+                uc.mem_write(addr, a.data)
+                bump = addr + max(len(a.data), a.out_len)
+                reg_vals.append(addr)
+            else:
+                reg_vals.append(a & 0xFFFFFFFF)
+        for reg, val in zip(_ARG_REGS, reg_vals):
+            uc.reg_write(reg, val)
+        uc.reg_write(UC_ARM_REG_SP, self.stack_top)
+        uc.reg_write(UC_ARM_REG_LR, self.sentinel | 1)
+        addr = self._resolve(stim.entrypoint)
+        uc.reg_write(UC_ARM_REG_PC, addr | 1)
+        return addr
+
     def run_stimulus(self, stim, index):
         uc = self.uc
         # Restore .data/.bss (resets globals like the heap bump pointer), then
@@ -447,13 +472,11 @@ def _resolve_vector_table(spec, symbols, regions):
     return regions[0]["base"]
 
 
-def boot_app(elf_path, emu_config, peripherals=(), max_cycles=None, count_instructions=False):
-    """Boot the firmware ELF from its reset vector and run it with `peripherals`.
-
-    Stops when a peripheral's done() fires or the `max_cycles` instruction budget
-    is hit (firmware main loops never return). `count_instructions` adds a per-
-    instruction hook (needed for a retired-instruction count, but ~20x slower —
-    off by default so busy-wait delays run at native speed)."""
+def build_app(elf_path, emu_config, peripherals=()):
+    """Set up the emulator to boot the firmware ELF from its reset vector — map
+    memory, load the LMA image, install peripherals, and place SP/PC from the
+    vector table — but do NOT start running. Returns (uc, start_pc, symbols).
+    boot_app runs it; the .debug launcher hands it to GDB instead."""
     if emu_config.get("boot") != "reset":
         raise SimError("boot_app requires the platform's boot mode to be 'reset'")
     uc = _new_uc(emu_config["architecture"])
@@ -478,6 +501,18 @@ def boot_app(elf_path, emu_config, peripherals=(), max_cycles=None, count_instru
     sp = int.from_bytes(uc.mem_read(vt, 4), "little")
     pc = int.from_bytes(uc.mem_read(vt + 4, 4), "little")
     uc.reg_write(UC_ARM_REG_SP, sp)
+    uc.reg_write(UC_ARM_REG_PC, pc)
+    return uc, pc, symbols
+
+
+def boot_app(elf_path, emu_config, peripherals=(), max_cycles=None, count_instructions=False):
+    """Boot the firmware ELF from its reset vector and run it with `peripherals`.
+
+    Stops when a peripheral's done() fires or the `max_cycles` instruction budget
+    is hit (firmware main loops never return). `count_instructions` adds a per-
+    instruction hook (needed for a retired-instruction count, but ~20x slower —
+    off by default so busy-wait delays run at native speed)."""
+    uc, pc, _symbols = build_app(elf_path, emu_config, peripherals)
 
     counter = {"n": 0}
     if count_instructions:

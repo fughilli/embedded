@@ -20,6 +20,16 @@ modules with no caller-relative labels. Pair it with the flash rules in
 The retargeted ELF is available via the `elf` output group.
 """
 
+FirmwareInfo = provider(
+    doc = "A built firmware artifact + the debug inputs a GDB session needs.",
+    fields = {
+        "elf": "The ELF File (symbols/sections — what GDB loads).",
+        "image": "The flashable image File (.uf2 / .bin).",
+        "board": "The board name it was built for.",
+        "name": "The firmware target name.",
+    },
+)
+
 # Board -> platform, resolved in THIS module's repo (so the transition targets
 # @firmware//platforms:* even when the rule is used from another module).
 _BOARD_PLATFORM = {
@@ -99,6 +109,7 @@ def _firmware_binary_impl(ctx):
     return [
         DefaultInfo(files = depset([out])),
         OutputGroupInfo(elf = depset([elf])),
+        FirmwareInfo(elf = elf, image = out, board = board, name = ctx.label.name),
     ]
 
 firmware_binary = rule(

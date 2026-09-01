@@ -8,7 +8,7 @@
 # the link needs the script wired in via linkopts + additional_linker_inputs.
 load("//libs/board/stm32g0:stm32g0.bzl", "STM32G0_VARIANTS", "stm32g0_linker_script")
 load("//rules:firmware.bzl", "firmware_binary")
-load("//rules:flash.bzl", "pyocd_flash")
+load("//rules:flash.bzl", "pyocd_debug", "pyocd_flash")
 load("//rules/sim:sim.bzl", "sim_peripheral_plugin", "simulation_app", "simulation_platform")
 
 package(default_visibility = ["//visibility:public"])
@@ -49,6 +49,14 @@ firmware_binary(name = "stm32g0b1", binary = ":blink", board = "stm32g0")  # -> 
 #   bazel run //apps/blink_stm32g0b1:flash_stm32g0b1 -- --probe <uid>
 pyocd_flash(
     name = "flash_stm32g0b1",
+    firmware = ":stm32g0b1",
+    target = _G0B1.pyocd_target,
+)
+
+# Interactive GDB on the real STM32G0B1 over a CMSIS-DAP / ST-Link probe.
+#   bazel run //apps/blink_stm32g0b1:debug
+pyocd_debug(
+    name = "debug",
     firmware = ":stm32g0b1",
     target = _G0B1.pyocd_target,
 )

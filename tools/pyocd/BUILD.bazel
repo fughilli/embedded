@@ -89,3 +89,7 @@ py_binary(
     main = "verify_backend.py",
     deps = [":nix_libusb"],
 )
+
+# Orchestrator for the pyocd_debug rule (//rules:flash.bzl): starts
+# `pyocd gdbserver` + launches GDB attached. Exported for the caller's package.
+exports_files(["pyocd_debug_main.py"])

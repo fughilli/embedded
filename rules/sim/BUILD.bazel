@@ -60,6 +60,23 @@ py_library(
     imports = ["."],
 )
 
+# Shared GDB-session launcher (start stub -> wait -> run gdb -> shut down), used by
+# both the emulator (.debug) and hardware (pyocd_debug) sides.
+py_library(
+    name = "gdb_launch",
+    srcs = ["gdb_launch.py"],
+    imports = ["."],
+)
+
+# In-tree GDB remote-serial-protocol stub driving the Unicorn engine (used instead
+# of udbserver, which can't handle Cortex-M's MCLASS mode).
+py_library(
+    name = "uc_gdbserver",
+    srcs = ["uc_gdbserver.py"],
+    imports = ["."],
+    deps = ["@sim_pypi//unicorn"],
+)
+
 # The Unicorn execution harness: loads a stub ELF, maps memory per the platform's
 # emu config, runs stimuli, enforces the max_* limits.
 py_library(
@@ -94,6 +111,7 @@ cc_library(
     visibility = ["//visibility:public"],
 )
 
-# Shared py_test entry points referenced by the sim.bzl macros from the caller's
-# package (test_main = stub perf tests, app_main = full-app emulation).
-exports_files(["test_main.py", "app_main.py"])
+# Shared py entry points referenced by the sim.bzl macros from the caller's
+# package (test_main = stub perf tests, app_main = full-app emulation,
+# sim_debug_main = interactive GDB under the emulator).
+exports_files(["test_main.py", "app_main.py", "sim_debug_main.py"])
