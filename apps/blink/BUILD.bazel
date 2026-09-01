@@ -2,6 +2,7 @@
 # + packages it per board, and the flash rules run the tools.
 load("//rules:firmware.bzl", "firmware_binary")
 load("//rules:flash.bzl", "esptool_flash", "picotool_flash")
+load("//rules/sim:sim.bzl", "simulation_app", "simulation_platform")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -42,4 +43,26 @@ esptool_flash(
     bootloader = "//libs/board:esp32_bootloader_bin",
     bootloader_offset = "0x1000",  # classic ESP32 ROM loads from 0x1000, not 0x0
     chip = "esp32",
+)
+
+# --- Full-app emulation: boot the EXACT arduino-pico RP2350 image -----------
+# Boots //apps/blink:rp2350 (the same ELF behind the flashed .uf2) from its reset
+# vector under Unicorn, with the RP2350 boot "basic set" (SIO/bootrom/clock
+# status), through the pico-sdk runtime_init into clock init.
+#   bazel test //apps/blink:rp2350_boot_sim
+simulation_platform(
+    name = "rp2350_sim",
+    architecture = "armv8-m",
+    memory_map = "sim_rp2350_memory_map.json",
+)
+
+simulation_app(
+    name = "rp2350_boot_sim",
+    checker = "rp2350_boot_checker.py",
+    checker_module = "rp2350_boot_checker",
+    firmware = ":rp2350",
+    max_cycles = 200000000,
+    platform = ":rp2350_sim",
+    plugins = ["//rules/sim/plugins/rp2350:rp2350_boot"],
+    size = "small",
 )

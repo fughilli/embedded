@@ -1,0 +1,11 @@
+# Built-in virtual-hardware plugin for booting RP2350 (Cortex-M33) images under
+# the emulator — the "basic set" the pico-sdk runtime_init needs (SIO CPUID,
+# bootrom-call stub, permissive clock/PLL status). See //rules/sim:peripherals.
+load("//rules/sim:sim.bzl", "sim_peripheral_plugin")
+
+package(default_visibility = ["//visibility:public"])
+
+sim_peripheral_plugin(
+    name = "rp2350_boot",
+    srcs = ["rp2350_boot.py"],
+)

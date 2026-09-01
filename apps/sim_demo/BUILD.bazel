@@ -1,0 +1,83 @@
+# PoC for the Unicorn firmware simulator (//rules/sim). A handful of C snippets
+# are linked into a stub for a Cortex-M33-class simulation_platform, then executed
+# under Unicorn: a stimulus generator calls each function and checks its result,
+# with cycle/stack/static/heap budgets enforced.
+#
+#   bazel test //apps/sim_demo:demo_test
+load("//rules/sim:sim.bzl", "simulation_platform", "simulation_stub", "simulation_test")
+load("@rules_python//python:defs.bzl", "py_library")
+
+package(default_visibility = ["//visibility:public"])
+
+# Firmware-under-test. Compiled under the sim platform via the stub's transition,
+# so it only builds for the emulator target.
+cc_library(
+    name = "snippet",
+    srcs = ["snippet.c"],
+    hdrs = ["snippet.h"],
+    # Whole-archived into the stub so the harness can call any function, even
+    # ones no other code references (required for simulation_stub deps).
+    alwayslink = True,
+    target_compatible_with = ["//platforms:sim_unicorn"],
+)
+
+# The device model: 256K flash @ 0, 128K RAM @ 0x20000000, 8K stack, 16K heap.
+simulation_platform(
+    name = "m33",
+    architecture = "armv8-m",
+    memory_map = "memory_map.json",
+)
+
+# Link the snippets (+ sim runtime) into a stub ELF for the m33 platform.
+simulation_stub(
+    name = "demo_stub",
+    deps = [":snippet"],
+    platform = ":m33",
+)
+
+# The stimulus generator (implements SimulationStimulusGenerator). Named module
+# "generator" so test_main can import it (imports = ["."]).
+py_library(
+    name = "generator",
+    srcs = ["generator.py"],
+    imports = ["."],
+    deps = ["//rules/sim:stimulus"],
+)
+
+# Run the stimuli under Unicorn with budgets. max_cycles here counts retired
+# instructions (no timing model); the peaks printed by the test back these
+# limits: stack 236 B, static 8 B, dynamic 256 B, ~3093 instrs.
+simulation_test(
+    name = "demo_test",
+    max_cycles = 4096,
+    max_dynamic = 512,
+    max_static = 256,
+    max_stack = 512,
+    generator = ":generator",
+    stub = ":demo_stub",
+)
+
+# Same device + snippets, but with a timing model: max_cycles is now charged in
+# virtual cycles (3x instructions here), exercising the timing-model path.
+simulation_platform(
+    name = "m33_timed",
+    architecture = "armv8-m",
+    memory_map = "memory_map.json",
+    timing_model = "timing.json",
+)
+
+simulation_stub(
+    name = "demo_stub_timed",
+    deps = [":snippet"],
+    platform = ":m33_timed",
+)
+
+simulation_test(
+    name = "demo_test_timed",
+    max_cycles = 12288,  # 3 cyc/instr * ~3093 peak instrs
+    max_dynamic = 512,
+    max_static = 256,
+    max_stack = 512,
+    generator = ":generator",
+    stub = ":demo_stub_timed",
+)

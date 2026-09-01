@@ -1,11 +1,23 @@
 # Board-support library + the Arduino-core facade.
 package(default_visibility = ["//visibility:public"])
 
+# The Arduino-core targets below are meaningful only under an Arduino board (their
+# select()s have no default). Marking them incompatible off-board lets `bazel
+# build/test //...` skip them in the host config instead of failing to resolve the
+# select; the embedded_binary/firmware_binary transition makes them compatible.
+_ARDUINO_ONLY = select({
+    "//platforms:is_rp2350": [],
+    "//platforms:is_esp32c6": [],
+    "//platforms:is_esp32": [],
+    "//conditions:default": ["@platforms//:incompatible"],
+})
+
 # The per-board Arduino core, chosen once by select(). Anything needing the core
 # (board support, FastLED, apps) depends on this rather than repeating the
 # select. Resolved under the embedded_binary platform transition.
 cc_library(
     name = "arduino_core",
+    target_compatible_with = _ARDUINO_ONLY,
     deps = select({
         "//platforms:is_rp2350": ["@arduino_pico//:core"],
         "//platforms:is_esp32c6": ["@arduino_esp32//:core"],
@@ -31,6 +43,7 @@ cc_library(
         "//platforms:is_esp32": ["esp32.cpp"],
     }),
     hdrs = ["board.h"],
+    target_compatible_with = _ARDUINO_ONLY,
     # Full-path quote includes (`#include "libs/board/board.h"`) resolve against
     # the repo root via Bazel's default -iquote, so no `includes` needed.
     deps = [":arduino_core"],

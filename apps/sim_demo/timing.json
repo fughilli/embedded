@@ -1,0 +1,4 @@
+{
+  "_comment": "Coarse timing profile for the PoC: a flat cycles-per-instruction, standing in for a per-opcode-class model captured on real silicon. max_cycles is then charged in virtual cycles rather than retired instructions.",
+  "cycles_per_instruction": 3
+}

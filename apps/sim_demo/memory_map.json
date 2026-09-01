@@ -1,0 +1,9 @@
+{
+  "_comment": "A small Cortex-M33-class device model for the Unicorn sim PoC.",
+  "regions": [
+    {"name": "FLASH", "kind": "rom", "origin": "0x00000000", "length": "256K"},
+    {"name": "RAM",   "kind": "ram", "origin": "0x20000000", "length": "128K"}
+  ],
+  "stack": {"length": "8K"},
+  "heap":  {"length": "16K"}
+}

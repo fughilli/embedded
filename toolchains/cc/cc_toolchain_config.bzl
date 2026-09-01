@@ -100,6 +100,22 @@ def _impl(ctx):
         )] if ctx.attr.compile_flags else [],
     )
 
+    # Emit debug info in EVERY compile (-g3 -ggdb). This never changes the flashed
+    # image — that comes from the ELF via objcopy/picotool, which drop debug
+    # sections — and it's stripped from the ELF too in the normal build. A GDB
+    # session's `.debug` ELF is compiled with these exact same flags and simply
+    # isn't stripped (see //rules:firmware.bzl debug_elf, which flips only
+    # --strip). Keeping it always-on means the debugged binary is byte-for-byte
+    # the same code as the flashed one.
+    debug_info = feature(
+        name = "debug_info",
+        enabled = True,
+        flag_sets = [flag_set(
+            actions = _COMPILE_ACTIONS,
+            flag_groups = [flag_group(flags = ["-g3", "-ggdb"])],
+        )],
+    )
+
     default_link = feature(
         name = "default_link_flags",
         enabled = True,
@@ -158,7 +174,7 @@ def _impl(ctx):
         abi_libc_version = "unknown",
         host_system_name = "local",
         action_configs = action_configs,
-        features = [default_compile, default_link, archiver_flags],
+        features = [default_compile, debug_info, default_link, archiver_flags],
         # Absolute /nix/store include dirs vary by pin; allowing the whole store
         # as a prefix suppresses "undeclared inclusion" errors hermetically.
         # Tighten to the exact reported dirs once known (see WORKLOG).

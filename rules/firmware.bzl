@@ -20,6 +20,60 @@ modules with no caller-relative labels. Pair it with the flash rules in
 The retargeted ELF is available via the `elf` output group.
 """
 
+FirmwareInfo = provider(
+    doc = "A built firmware artifact + the debug inputs a GDB session needs.",
+    fields = {
+        "elf": "The ELF File (symbols/sections — what GDB loads).",
+        "image": "The flashable image File (.uf2 / .bin).",
+        "board": "The board name it was built for.",
+        "name": "The firmware target name.",
+    },
+)
+
+# ---------------------------------------------------------------------------
+# debug_elf: rebuild a firmware/stub ELF WITH debug info, for a GDB session.
+# ---------------------------------------------------------------------------
+# The toolchain already compiles every object with debug info (-g3 -ggdb; see
+# //toolchains/cc:cc_toolchain_config), but the flash build strips it from the ELF
+# (fastbuild's --strip=sometimes). So the ONLY thing this transition changes is
+# --strip=never: the debug ELF is byte-for-byte the same compile as the flashed
+# one, just not stripped. (The flashed image is unaffected — it's objcopy'd /
+# picotool'd from the ELF, dropping debug sections regardless.)
+def _debug_cfg_impl(_settings, _attr):
+    return {"//command_line_option:strip": "never"}
+
+_debug_cfg = transition(
+    implementation = _debug_cfg_impl,
+    inputs = [],
+    outputs = ["//command_line_option:strip"],
+)
+
+def _debug_elf_impl(ctx):
+    dep = ctx.attr.firmware[0]  # transitioned -> 1-element list
+    if ctx.attr.output_group:
+        elf = getattr(dep[OutputGroupInfo], ctx.attr.output_group).to_list()[0]
+    else:
+        elf = dep[DefaultInfo].files.to_list()[0]
+    out = ctx.actions.declare_file(ctx.label.name + ".elf")
+    ctx.actions.symlink(output = out, target_file = elf)
+    return [DefaultInfo(files = depset([out]))]
+
+debug_elf = rule(
+    implementation = _debug_elf_impl,
+    doc = "Republish a firmware/stub ELF rebuilt with debug info (--strip=never " +
+          "+ -ggdb3) for a GDB session.",
+    attrs = {
+        "firmware": attr.label(mandatory = True, cfg = _debug_cfg),
+        "output_group": attr.string(
+            doc = "Output group holding the ELF (e.g. `elf` for firmware_binary); " +
+                  "empty = the target's default output (e.g. a simulation_stub).",
+        ),
+        "_allowlist_function_transition": attr.label(
+            default = "@bazel_tools//tools/allowlists/function_transition_allowlist",
+        ),
+    },
+)
+
 # Board -> platform, resolved in THIS module's repo (so the transition targets
 # @firmware//platforms:* even when the rule is used from another module).
 _BOARD_PLATFORM = {
@@ -99,6 +153,7 @@ def _firmware_binary_impl(ctx):
     return [
         DefaultInfo(files = depset([out])),
         OutputGroupInfo(elf = depset([elf])),
+        FirmwareInfo(elf = elf, image = out, board = board, name = ctx.label.name),
     ]
 
 firmware_binary = rule(

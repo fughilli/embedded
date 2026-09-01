@@ -8,7 +8,8 @@
 # the link needs the script wired in via linkopts + additional_linker_inputs.
 load("//libs/board/stm32g0:stm32g0.bzl", "STM32G0_VARIANTS", "stm32g0_linker_script")
 load("//rules:firmware.bzl", "firmware_binary")
-load("//rules:flash.bzl", "pyocd_flash")
+load("//rules:flash.bzl", "pyocd_debug", "pyocd_flash")
+load("//rules/sim:sim.bzl", "sim_peripheral_plugin", "simulation_app", "simulation_platform")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -50,4 +51,44 @@ pyocd_flash(
     name = "flash_stm32g0b1",
     firmware = ":stm32g0b1",
     target = _G0B1.pyocd_target,
+)
+
+# Interactive GDB on the real STM32G0B1 over a CMSIS-DAP / ST-Link probe.
+#   bazel run //apps/blink_stm32g0b1:debug
+pyocd_debug(
+    name = "debug",
+    firmware = ":stm32g0b1",
+    target = _G0B1.pyocd_target,
+)
+
+# --- Full-app emulation MVP -------------------------------------------------
+# Boot the EXACT stm32g0b1 image (the same ELF behind the flashed .bin) from its
+# reset vector under Unicorn, with virtual RCC+GPIO peripherals, and assert PD8
+# actually blinks.  bazel test //apps/blink_stm32g0b1:blink_sim
+simulation_platform(
+    name = "g0b1_sim",
+    architecture = "armv6-m",
+    memory_map = "sim_memory_map.json",
+)
+
+# App-local plugin (stands in for a client repo extending the device model):
+# watches RCC to confirm the GPIOD clock is enabled.
+sim_peripheral_plugin(
+    name = "blink_rcc_probe",
+    srcs = ["blink_rcc_probe.py"],
+)
+
+# Device model = the shared STM32G0 GPIO plugin + this app's RCC probe.
+simulation_app(
+    name = "blink_sim",
+    checker = "blink_checker.py",
+    checker_module = "blink_checker",
+    firmware = ":stm32g0b1",
+    max_cycles = 80000000,
+    platform = ":g0b1_sim",
+    plugins = [
+        "//rules/sim/plugins/stm32g0:stm32g0_gpio",
+        ":blink_rcc_probe",
+    ],
+    size = "small",
 )

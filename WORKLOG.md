@@ -1,5 +1,213 @@
 # WORKLOG
 
+## ✅ UNICORN SIM — RP2350 blinks in-emulator + GDB support (2026-09-01)
+
+### RP2350 arduino blink boots to loop() and blinks the LED
+`//apps/blink:rp2350_boot_sim` now boots the EXACT arduino-pico image from reset
+all the way into arduino loop(), toggling the on-board LED (GPIO25). What it took
+beyond the earlier clock-init milestone (all in //rules/sim/plugins/rp2350):
+- Full CLOCKS model: `clk[].SELECTED = 1<<CTRL.SRC` (from pico-sdk clocks.c);
+  XOSC.STABLE / PLL.CS.LOCK / RESETS.RESET_DONE / PSM.DONE status; TIMER advancing
+  for delay(); a bootrom lock word (0x400e0828) seeded.
+- The RP2350 atomic register aliases (SET/CLR/XOR at addr bits [13:12]) emulated
+  for the whole APB window (the SDK's hw_set/clear_bits pervasively use them).
+- RP2350 CUSTOM COPROCESSORS: the M33 here has RCP/DCP/GPIO coprocessors Unicorn's
+  generic core can't execute (undefined-instruction fault in runtime_init). Scan
+  flash for the 32-bit coproc encodings and skip the RCP/DCP integrity canaries;
+  EMULATE the GPIO coprocessor `put` (mcrr p0,#4,gpio,val) -> SIO — that's how
+  gpio_put/digitalWrite drives the LED. WFE/WFI -> no-ops.
+- THE killer bug: boot_app loaded PT_LOAD by VMA, but the real reset path runs
+  crt0 which copies .data from its flash LMA to RAM; loading by VMA meant crt0
+  copied the *uninitialized* LMA (zeros) over initialized globals -> corrupted
+  heap -> malloc looped forever. Fix: load by LMA (p_paddr) in boot mode. (Also
+  latently wrong for the STM32G0 app, which just happens to use no initialized
+  globals.)
+Gotcha: redirecting PC from a Unicorn hook / resuming must keep the thumb bit
+(even PC -> ARM decode -> invalid instruction). THUMB-only mode (no MCLASS) boots
+STM32G0 but NOT RP2350 (needs M-profile-only instructions).
+
+### GDB support (gdb_support.md): emulation + real hardware
+- firmware_binary provides FirmwareInfo(elf, image, board, name).
+- Emulation: simulation_app / simulation_test each emit a `<name>.debug` py_binary
+  that serves a GDB stub on the Unicorn engine (background thread) and launches
+  arm-none-eabi-gdb attached, halted at the entry (app: main; test: the first
+  stimulus's entrypoint, args pre-loaded). Interactive breakpoints/mem/step;
+  server torn down on GDB exit.
+    `bazel run //apps/blink:rp2350_boot_sim.debug`
+    `bazel run //apps/sim_demo:demo_test.debug`
+  udbserver (the intended stub) PANICS on Cortex-M: it does
+  `Mode::try_from(uc.query(MODE))` and Unicorn returns THUMB|MCLASS (0x30), not a
+  single Mode variant; our firmware needs MCLASS. So instead we ship a compact
+  in-tree GDB RSP stub (rules/sim/uc_gdbserver.py, udbserver-drop-in) driving the
+  real MCLASS engine (m-profile target.xml, g/G/p/P, m/M, Z/z, continue+Ctrl-C,
+  step). Verified with real arm-none-eabi-gdb on STM32G0 + RP2350 + a perf stub.
+  Bug found writing it: GDB's leading '+' ack must be skipped when framing packets,
+  and continue must run with a nonzero count + thumb-bit PC.
+- Hardware: `pyocd_debug(name, firmware, target, flash=True)` starts
+  `pyocd gdbserver` + arm-none-eabi-gdb attached (flash=False attaches to a running
+  target). Wired: `bazel run //apps/blink_stm32g0b1:debug`.
+
+## 🚧 UNICORN SIM — ARDUINO APP BOOT: RP2350 partial, ESP32 findings (2026-09-01)
+
+Goal: boot the arduino blink apps (//apps/blink) for ESP32 + RP2350 in-emulator.
+Findings + status per target (much harder than the bare-metal STM32G0 MVP):
+
+- **ESP32 classic (Xtensa LX6): IMPOSSIBLE in Unicorn.** Upstream Unicorn has NO
+  Xtensa backend (arches: arm, arm64, m68k, mips, ppc, riscv, s390x, sparc,
+  tricore, x86). Confirmed. Would need a different emulator (QEMU-xtensa).
+
+- **RP2350 (Cortex-M33): PARTIAL BOOT, green test.**
+  `//apps/blink:rp2350_boot_sim` boots the EXACT arduino-pico image from its reset
+  vector (`__VECTOR_TABLE`, after the 0x3000 boot metadata) through the pico-sdk
+  `runtime_init -> xosc_init -> pll_init` (clock init). Basic set that got it there
+  (all in //rules/sim/plugins/rp2350:rp2350_boot):
+    1. boot from the vector table, NOT e_entry (e_entry is the core1/bootrom-return
+       helper);
+    2. SIO CPUID (0xd0000000) reads 0 -> core0 path;
+    3. intercept `rom_func_lookup` -> return a no-op thumb stub (avoids emulating
+       the 32KB mask ROM); pico-sdk bootrom calls (reset/locking) then succeed;
+    4. permissive APB status reads (0xFFFFFFFF) -> LOCK/STABLE/ENABLE polls pass;
+    5. CLOCKS "SELECTED" reads -> 1 -> clock-source-select polls pass.
+  REMAINING to reach setup()/loop(): a faithful CLOCKS/PLL model — the per-
+  generator SELECTED one-hot must echo `1<<source` (a constant breaks the
+  `tst 1<<src` polls in clock_configure_internal for sources > 0), plus a TIMER
+  time source so delay() advances. Bounded but detailed RP2350-datasheet work.
+  Gotcha: redirecting PC from a Unicorn code hook must KEEP the thumb bit (writing
+  an even PC switches to ARM state -> invalid-instruction on 32-bit Thumb).
+
+- **ESP32-C6 (RISC-V rv32imac): FEASIBLE arch, LARGE effort — not started.**
+  Entry `call_start_cpu0` (0x40800828, HP SRAM); bulk of code is flash-cache-mapped
+  at 0x42000000 (loadable from the ELF segments). Boot jumps into the ESP mask ROM
+  at 0x40000018 within ~6 blocks — ROM funcs are called at FIXED addresses
+  pervasively (not one stub-able indirection like RP2350), so it needs the real
+  ESP32-C6 ROM binary mapped at 0x40000000. Then: cache/MMU, watchdog disable,
+  UART, the interrupt controller + systimer, and FreeRTOS scheduling before
+  app_main/setup/loop. Multi-week; RISC-V arch support is already in the harness.
+
+Framework additions this session (committed): RISC-V arch in the harness;
+configurable vector-table location (address or symbol); ELF symbol resolution in
+app mode; `Peripheral.code_hooks` (function/ROM interception — the generalization
+of a stub); RAM regions are now executable.
+
+## ✅ UNICORN SIM — DEVICE MODEL AS A PLUGIN SYSTEM (2026-09-01)
+
+The virtual-peripheral device model is now a plugin registry so the client repos
+that vendor this repo can extend it without modifying it.
+
+- `//rules/sim:peripherals` gained a registry: `@sim_peripheral("name")` decorates
+  a `Peripheral` subclass into `_REGISTRY`; `import_plugins()` / `instantiate()`
+  compose a device model. Name-keyed, so a client can *override* a built-in by
+  re-registering the same name (plugins import in listed order).
+- `sim_peripheral_plugin(name, srcs=[<name>.py])` (sim.bzl) — a py_library whose
+  module is the target name (imports=['.']), depending ONLY on
+  //rules/sim:peripherals (no harness/unicorn), so a client repo can author
+  hardware models cheaply. `simulation_app(..., plugins=[labels])` derives each
+  module name from its label, imports all, and instantiates every registered
+  peripheral as that app's device model. Checkers locate a model via
+  `result.by_name(sim_name)`.
+- Built-in shared plugin: `//rules/sim/plugins/stm32g0:stm32g0_gpio`
+  ("stm32g0.gpio"). The blink test composes it with an APP-LOCAL plugin
+  `//apps/blink_stm32g0b1:blink_rcc_probe` ("blink.rcc_probe") — the stand-in for
+  a client extension — and the checker asserts both (LED blinks AND the GPIOD
+  clock was enabled). Device model line in the run:
+  `stm32g0.gpio(Stm32g0Gpio), blink.rcc_probe(RccProbe)`.
+- Constraint: plugin module names share one flat namespace per app, so name them
+  uniquely (`stm32g0_gpio`, `acme_sensor`), not `gpio`.
+
+Client usage (from a repo vendoring this one):
+    load("@firmware//rules/sim:sim.bzl", "sim_peripheral_plugin", "simulation_app")
+    sim_peripheral_plugin(name = "acme_sensor", srcs = ["acme_sensor.py"])
+    simulation_app(name = ..., firmware = ..., platform = ..., plugins = [
+        "@firmware//rules/sim/plugins/stm32g0:stm32g0_gpio", ":acme_sensor"])
+
+## ✅ UNICORN SIM — FULL-APP EMULATION MVP: blinky boots from reset (2026-09-01)
+
+`bazel test //apps/blink_stm32g0b1:blink_sim` boots the **exact device image**
+(the same ELF behind the flashed `.bin`, via the firmware_binary `elf` output
+group) from its **reset vector** under Unicorn, runs it **unmodified** with
+**virtual peripherals**, and asserts the LED (PD8) actually blinks (`[1,0,1,0]`).
+
+Key findings + additions:
+- **Unicorn 2.1.4 already emulates the Cortex-M33 FPU** (verified: `vmul.f32`/
+  `vfma.f32` execute, IEEE-754 bit-exact) — NO patch/custom build needed. It
+  doesn't even enforce the CPACR NOCP trap. Sim toolchain switched to hardware FP
+  matching the RP2350 (`armv8-m.main+fp+dsp`, `fpv5-sp-d16`, softfp), harness sets
+  CPACR best-effort.
+- New **full-app mode**: `simulation_app(name, firmware, platform, peripherals,
+  checker, max_cycles)` (sim.bzl) → `app_main.py`. Boots the real ELF from the
+  vector table (SP/PC from `mem[vt]`, `mem[vt+4]`).
+- **Virtual peripherals**: `Peripheral` ABC (`peripherals.py`: regions/read/write/
+  done). The harness maps MMIO ranges as backing RAM (plain reads/writes just
+  work) and installs read/write hooks for register side effects; a model's
+  `done()` stops emulation (main loops never return). The STM32G0 model
+  (`apps/blink_stm32g0b1/peripherals_model.py`) implements RCC + GPIOD BSRR→ODR
+  and tracks PD8.
+- `memory_map.json` gained `kind: mmio` regions + `boot: reset`; `gen_platform.py`
+  emits them into `emu.json`. Harness gained `boot_app()` + armv6-m (Cortex-M0)
+  in `_ARCH_CPU`.
+- **Perf gotcha**: the per-instruction `UC_HOOK_CODE` counter throttles Unicorn to
+  ~4M instr/s; a busy-wait blink half-period is ~15M instrs. App mode omits that
+  hook → native speed, test runs in <1s.
+- MVP scoping: `//apps/blink` (arduino, RP2350/ESP) is NOT MVP-able — booting it
+  means emulating the whole arduino-pico/ESP-IDF runtime. The **bare-metal
+  `//apps/blink_stm32g0b1`** (own Reset_Handler, `main()`, GPIO toggle, busy
+  delay) was the tractable exact-binary target.
+
+Three sim tests green: `//apps/sim_demo:demo_test`, `:demo_test_timed` (perf
+stubs), `//apps/blink_stm32g0b1:blink_sim` (full app). `MODULE.bazel.lock` still
+needs committing (added `@unicorn` + `@sim_pypi`).
+
+## ✅ UNICORN FIRMWARE SIMULATOR — PoC GREEN (2026-09-01)
+
+New ruleset `//rules/sim`: build firmware (and snippets) into a stub ELF for a
+"simulation platform" and execute it under the Unicorn CPU emulator with
+cycle/stack/static/heap budgets. `bazel test //apps/sim_demo:all` passes (2
+tests, incl. a timing-model virtual-cycle variant).
+
+Public API (`//rules/sim:sim.bzl`):
+- `simulation_platform(name, memory_map, architecture, timing_model=None)` — a
+  device model. `memory_map` JSON → GNU ld script + GDB memory layout +
+  normalized `emu.json` (via `gen_platform.py`). `architecture` picks the Bazel
+  platform/toolchain the stub compiles under; `timing_model` (optional) lets
+  `max_cycles` be charged in virtual cycles instead of retired instructions.
+  Provides `SimulationPlatformInfo`. Macro also emits `<name>.platform`
+  (a `native.platform` with the arch constraints).
+- `simulation_stub(name, deps, platform, entry_point="_start")` — links `deps`
+  into `<name>.elf` under a transition to `<platform>.platform`, with the
+  generated linker script wired in. Firmware `deps` must be `alwayslink=True`
+  (stub links `--no-gc-sections` to keep every callable entrypoint). Provides
+  `SimulationStubInfo`.
+- `simulation_test(name, stub, generator, srcs=None, max_cycles, max_stack,
+  max_static, max_dynamic, generator_module="generator")` — runs `generator`'s
+  stimuli (`(entrypoint(args), expected_return)` pairs from a
+  `SimulationStimulusGenerator` ABC) + any non-stimulus `srcs` bodies against
+  `stub` under Unicorn; fails on mismatch or any exceeded budget. NOTE vs. the
+  original sketch: takes a prebuilt `stub` (the sketch didn't say where the C
+  came from); platform/emu flows stub→test.
+
+Unicorn wiring: the pip `unicorn` bindings' native lib is overridden by Nix —
+`@unicorn` (nixpkgs `unicorn` 2.1.4) staged + selected via `LIBUNICORN_PATH`
+(the loader probes `$LIBUNICORN_PATH/libunicorn.so.2` first). Mirrors the
+`//tools/pyocd` libusb pattern. Dedicated pip hub `@sim_pypi`
+(unicorn==2.1.4 + pyelftools), lock at `//rules/sim:requirements.lock`
+(`bazel run //rules/sim:requirements.update`).
+
+Target: Cortex-M33 / ARMv8-M only so far (`//platforms:sim_armv8m`, new
+constraint `//platforms:sim_unicorn`; `//toolchains/cc/sim_armv8m` reuses
+`@arm_gcc`, no `--gc-sections`). Add arches to `_ARCH` in sim.bzl.
+
+Harness (`harness.py`): loads the ELF by VMA (so `.data` is initialized and
+`.bss` zeroed without running reset), maps regions per `emu.json`, calls each
+function with `LR = sentinel(0x90000000)|1` to detect return, counts retired
+instructions via `UC_HOOK_CODE`, and scans per-word stack/heap canaries for
+peak usage. `sim_rt.c` supplies a bump `malloc` over the linker `.sim_heap`
+region + `_start`. Two gotchas that cost cycles: (1) must `_reset_memory()`
+(replay PT_LOAD segments) before each stimulus or the heap bump pointer leaks
+and `max_dynamic` becomes cumulative; (2) a bare `ASSERT(...)` /
+`_sim_stack_limit=` must sit at linker-script TOP LEVEL, not inside `SECTIONS`.
+
+`MODULE.bazel.lock` changed (added `@unicorn` + `@sim_pypi`) — commit it.
+
 ## ✅ CMSIS DEVICE FAMILY PACKS VENDORED FOR pyOCD (2026-09-01)
 
 A pyOCD `--target` outside its built-ins (the STM32G0B1 → `stm32g0b1rctx`, an
