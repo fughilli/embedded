@@ -23,10 +23,12 @@ bazel_dep(name = "rules_pkg", version = "1.2.0")
 bazel_dep(name = "rules_rust", version = "0.71.3")
 
 # rules_python: hermetic interpreter + pip, used to vendor the pyOCD flash driver
-# (//tools/pyocd) from PyPI. Pinned to the 1.5 line — 2.x requires Bazel >=8 and
-# this repo is on 7.7.1. pyOCD's native runtime lib (libusb) is NOT taken from a
-# pip wheel; it is materialized from Nix (below) and injected by the wrapper.
-bazel_dep(name = "rules_python", version = "1.5.4")
+# (//tools/pyocd) from PyPI. Pinned to the 1.x line — 2.x requires Bazel >=8 and
+# this repo is on 7.7.1. 1.7.0 (not 1.5.4) so the root pin matches the version a
+# transitive dep of rules_uv raises the graph to (avoids a resolution warning).
+# pyOCD's native runtime lib (libusb) is NOT taken from a pip wheel; it is
+# materialized from Nix (below) and injected by the wrapper.
+bazel_dep(name = "rules_python", version = "1.7.0")
 
 # rules_uv: drives Astral's `uv` (hermetic, fetched via rules_multitool) to
 # compile requirements.lock. We use its UNIVERSAL mode so one lock covers every

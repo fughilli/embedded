@@ -42,7 +42,11 @@ cc_toolchain_config(
         "--specs=nosys.specs",
         "-nostartfiles",
         "-Wl,--gc-sections",
-        "-no-canonical-prefixes",
+        # NOTE: no -no-canonical-prefixes at link (kept for compile). With it, gcc
+        # hands ld the LTO plugin via a path relative to a relative argv[0]; macOS'
+        # hardened runtime refuses to dlopen a relative path ("relative path not
+        # allowed in hardened program"). Canonical (absolute) prefixes load fine
+        # on both macOS and Linux.
     ],
 )
 
