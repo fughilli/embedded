@@ -1,0 +1,13 @@
+{
+  "_comment": "RP2350 (Cortex-M33) device model for full-app emulation of the exact arduino-pico blink image. Boot is from the SDK vector table (__VECTOR_TABLE, placed after the 0x3000-byte boot metadata, NOT the flash origin). The bootrom region is writable/executable so the rp2350_boot plugin can stage a no-op stub for intercepted ROM calls. Peripheral windows are broad mmio the plugin services; see //rules/sim/plugins/rp2350.",
+  "regions": [
+    {"name": "BOOTROM", "kind": "ram",  "origin": "0x00000000", "length": "0x8000"},
+    {"name": "FLASH",   "kind": "rom",  "origin": "0x10000000", "length": "2M"},
+    {"name": "SRAM",    "kind": "ram",  "origin": "0x20000000", "length": "0x82000"},
+    {"name": "APB",     "kind": "mmio", "origin": "0x40000000", "length": "0x20000000"},
+    {"name": "SIO",     "kind": "mmio", "origin": "0xd0000000", "length": "0x10000"},
+    {"name": "PPB",     "kind": "mmio", "origin": "0xe0000000", "length": "0x10000"}
+  ],
+  "boot": "reset",
+  "vector_table": "__VECTOR_TABLE"
+}

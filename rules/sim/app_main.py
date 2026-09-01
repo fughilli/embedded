@@ -47,8 +47,8 @@ def main():
         sys.exit("plugins %r registered no peripherals" % args.plugins)
 
     print("== boot ==")
-    print("  arch=%s  boot=%s  vt=0x%08x" %
-          (emu["architecture"], emu.get("boot"), emu.get("vector_table", 0)))
+    print("  arch=%s  boot=%s  vt=%s" %
+          (emu["architecture"], emu.get("boot"), emu.get("vector_table")))
     print("  device model: %s" %
           ", ".join("%s(%s)" % (type(m).sim_name, type(m).__name__) for m in models))
     peripherals = models

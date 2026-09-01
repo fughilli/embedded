@@ -75,6 +75,14 @@ class Peripheral(abc.ABC):
         """Called after a write in this model's range (backing already updated).
         Implement register side effects here."""
 
+    def code_hooks(self, symbols):
+        """Function interceptions — the generalization of a ROM/function stub.
+        Return an iterable of (where, handler) where `where` is a symbol name or an
+        address, and handler(uc) is called when execution reaches it (e.g. to
+        emulate a bootrom call as a no-op and return, or to record a milestone).
+        `symbols` is the ELF's name -> address map. Default: none."""
+        return ()
+
     def done(self):
         """Return True once the app has exhibited enough behavior to judge; the
         harness then stops emulation. Default: never (rely on the cycle budget)."""

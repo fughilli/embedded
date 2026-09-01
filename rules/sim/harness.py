@@ -21,10 +21,12 @@ unicorn_nix.install()  # point LIBUNICORN_PATH at the Nix libunicorn before impo
 import unicorn.arm_const as _arm  # noqa: E402
 from unicorn import (  # noqa: E402
     UC_ARCH_ARM,
+    UC_ARCH_RISCV,
     UC_HOOK_CODE,
     UC_HOOK_MEM_READ,
     UC_HOOK_MEM_WRITE,
     UC_MODE_MCLASS,
+    UC_MODE_RISCV32,
     UC_MODE_THUMB,
     UC_PROT_EXEC,
     UC_PROT_READ,
@@ -53,12 +55,14 @@ _ARG_REGS = [UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3]
 _STACK_CANARY = 0xCAFE0000
 _HEAP_CANARY = 0xF00D0000
 
-# architecture -> Unicorn CPU model. All are ARM M-profile (thumb + mclass); the
-# model selects the exact ISA (FP, DSP, ...). Names are looked up on arm_const so
-# a missing model on an older unicorn degrades gracefully to the default core.
-_ARCH_CPU = {
-    "armv8-m": "UC_CPU_ARM_CORTEX_M33",
-    "armv6-m": "UC_CPU_ARM_CORTEX_M0",
+# architecture -> (unicorn arch/mode, optional CPU-model const name). ARM entries
+# are M-profile (thumb + mclass); the model selects the exact ISA (FP, DSP, ...).
+# riscv32 covers the ESP32-C6 (rv32imac). Xtensa (classic ESP32) is intentionally
+# absent: upstream Unicorn has no Xtensa backend, so it cannot be emulated here.
+_ARCH = {
+    "armv8-m": ("arm", "UC_CPU_ARM_CORTEX_M33"),
+    "armv6-m": ("arm", "UC_CPU_ARM_CORTEX_M0"),
+    "riscv32": ("riscv", None),
 }
 
 
@@ -67,17 +71,33 @@ class SimError(Exception):
 
 
 def _new_uc(arch):
-    if arch not in _ARCH_CPU:
+    if arch not in _ARCH:
         raise SimError("unsupported architecture %r (known: %s)" %
-                       (arch, ", ".join(sorted(_ARCH_CPU))))
-    uc = Uc(UC_ARCH_ARM, UC_MODE_THUMB | UC_MODE_MCLASS)
-    model = getattr(_arm, _ARCH_CPU[arch], None)
-    if model is not None:
-        try:
-            uc.ctl_set_cpu_model(model)
-        except Exception:
-            pass  # older unicorn: default core still decodes the M-profile ISA
+                       (arch, ", ".join(sorted(_ARCH))))
+    fam, model_name = _ARCH[arch]
+    if fam == "arm":
+        uc = Uc(UC_ARCH_ARM, UC_MODE_THUMB | UC_MODE_MCLASS)
+    else:  # riscv
+        uc = Uc(UC_ARCH_RISCV, UC_MODE_RISCV32)
+    if model_name:
+        model = getattr(_arm, model_name, None)
+        if model is not None:
+            try:
+                uc.ctl_set_cpu_model(model)
+            except Exception:
+                pass  # older unicorn: default core still decodes the ISA
     return uc
+
+
+def _elf_symbols(elf):
+    """name -> value from the ELF symbol table (for symbol-addressed hooks)."""
+    syms = {}
+    symtab = elf.get_section_by_name(".symtab")
+    if symtab is not None:
+        for s in symtab.iter_symbols():
+            if s.entry["st_value"]:
+                syms[s.name] = s.entry["st_value"]
+    return syms
 
 
 def _load_pt_load(uc, elf):
@@ -367,10 +387,13 @@ class AppResult:
         return None
 
 
-def _install_peripheral(uc, p):
+def _install_peripheral(uc, p, symbols):
     """Route reads/writes in the peripheral's MMIO ranges into the model. Backing
     memory (mapped as RAM) answers plain reads/holds written values; the hooks add
-    register side effects + let the model stop the run via done()."""
+    register side effects + let the model stop the run via done(). Also installs
+    the model's function-interception (code) hooks — the generalization of a ROM
+    stub: intercept a firmware/ROM function (by symbol name or address) and let the
+    model emulate it (e.g. return a no-op, or record that a milestone was hit)."""
     def on_write(uc_, access, addr, size, value, _ud):
         p.write(uc_, addr, size, value)
         if p.done():
@@ -384,6 +407,32 @@ def _install_peripheral(uc, p):
     for base, size in p.regions():
         uc.hook_add(UC_HOOK_MEM_WRITE, on_write, begin=base, end=base + size)
         uc.hook_add(UC_HOOK_MEM_READ, on_read, begin=base, end=base + size)
+
+    for where, handler in p.code_hooks(symbols):
+        addr = symbols[where] if isinstance(where, str) else where
+        addr &= ~1  # normalize the thumb bit
+        def make(h):
+            def on_code(uc_, a, s, _ud):
+                h(uc_)
+                if p.done():
+                    uc_.emu_stop()
+            return on_code
+        uc.hook_add(UC_HOOK_CODE, make(handler), begin=addr, end=addr + 2)
+
+
+def _resolve_vector_table(spec, symbols, regions):
+    """The reset vector table location: an int address, a symbol name, or (default)
+    the first rom/load region's base."""
+    if isinstance(spec, str) and spec:
+        if spec in symbols:
+            return symbols[spec]
+        return int(spec, 0)
+    if isinstance(spec, int):
+        return spec
+    for r in regions:
+        if r.get("load"):
+            return r["base"]
+    return regions[0]["base"]
 
 
 def boot_app(elf_path, emu_config, peripherals=(), max_cycles=None, count_instructions=False):
@@ -403,12 +452,15 @@ def boot_app(elf_path, emu_config, peripherals=(), max_cycles=None, count_instru
     _enable_fpu_uc(uc)
 
     with open(elf_path, "rb") as f:
-        _load_pt_load(uc, ELFFile(f))
+        elf = ELFFile(f)
+        _load_pt_load(uc, elf)
+        symbols = _elf_symbols(elf)
 
     for p in peripherals:
-        _install_peripheral(uc, p)
+        _install_peripheral(uc, p, symbols)
 
-    vt = emu_config["vector_table"]
+    vt = _resolve_vector_table(emu_config.get("vector_table"), symbols,
+                               emu_config["regions"])
     sp = int.from_bytes(uc.mem_read(vt, 4), "little")
     pc = int.from_bytes(uc.mem_read(vt + 4, 4), "little")
     uc.reg_write(UC_ARM_REG_SP, sp)

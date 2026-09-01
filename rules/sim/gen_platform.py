@@ -47,9 +47,10 @@ def parse_size(v):
 
 
 # Emulator memory-protection strings <-> the layout. The harness maps them to
-# UC_PROT_*. rom is executable+read; ram is read+write; mmio is read+write and
-# additionally routed to a peripheral device model (full-app mode).
-_PERM = {"rom": "r-x", "ram": "rw-", "mmio": "rw-"}
+# UC_PROT_*. rom is executable+read; ram is read+write+exec (these MCUs run code
+# from RAM — RAM vector tables, time-critical funcs copied to SRAM, sim stubs
+# staged in scratch); mmio is read+write and routed to a peripheral device model.
+_PERM = {"rom": "r-x", "ram": "rwx", "mmio": "rw-"}
 
 # A private, non-mapped-in-firmware page used as the "function returned" sentinel:
 # stimuli are called with LR pointing here, so a `bx lr` lands on it and the
@@ -166,11 +167,14 @@ def gen_emu_config(mm, arch, timing):
         "architecture": arch,
         "regions": regions,
         "sentinel": {"base": _SENTINEL_BASE, "size": _SENTINEL_SIZE},
-        # Full-app mode: "reset" boots from the vector table at the first rom
-        # region (SP=word0, PC=word1); "none" (default) means the harness calls
-        # functions directly (stub perf-test mode).
+        # Full-app mode: "reset" boots from the vector table (SP=word0, PC=word1);
+        # "none" (default) means the harness calls functions directly (stub mode).
         "boot": mm.get("boot", "none"),
-        "vector_table": parse_size(rom["origin"]) if rom else 0,
+        # Vector table location: a memory_map override (an address string or a
+        # symbol name, e.g. "__VECTOR_TABLE" when it isn't at the flash origin —
+        # the RP2350 puts it after its boot metadata), else the first rom origin.
+        "vector_table": mm.get("vector_table",
+                               parse_size(rom["origin"]) if rom else 0),
     }
     if timing:
         cfg["timing_model"] = timing
