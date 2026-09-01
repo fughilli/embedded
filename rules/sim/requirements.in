@@ -1,0 +1,13 @@
+# Python deps for the Unicorn firmware simulator (//rules/sim).
+#
+# `unicorn` is the ctypes binding layer only — the native libunicorn it dlopens
+# is NOT taken from this wheel; it is supplied by Nix (@unicorn) and selected at
+# runtime via LIBUNICORN_PATH (see //rules/sim:unicorn_nix). Pinned to match the
+# nixpkgs libunicorn (2.1.4) so the bindings and the C library agree on ABI.
+#
+# `pyelftools` is a pure-Python ELF reader used to pull section sizes, the symbol
+# table, and load segments out of the stub ELF.
+#
+# Regenerate the lock: bazel run //rules/sim:requirements.update
+unicorn==2.1.4
+pyelftools>=0.31

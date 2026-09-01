@@ -1,0 +1,12 @@
+# Built-in virtual-hardware plugins for the STM32G0 family, reusable by any
+# full-app emulation (this repo's apps or a dependent repo's) via
+# simulation_app(plugins=[...]). See //rules/sim:peripherals for the plugin model.
+load("//rules/sim:sim.bzl", "sim_peripheral_plugin")
+
+package(default_visibility = ["//visibility:public"])
+
+# STM32G0 GPIO (LED on PD8): registers "stm32g0.gpio".
+sim_peripheral_plugin(
+    name = "stm32g0_gpio",
+    srcs = ["stm32g0_gpio.py"],
+)

@@ -141,6 +141,12 @@ nix_pkg.attr(name = "libclang", attr = "llvmPackages.libclang.lib", repo = "@nix
 # probes (off-Linux) go through the pip `hidapi` wheel, so no Nix hidapi needed.
 nix_pkg.attr(name = "libusb", attr = "libusb1", repo = "@nixpkgs", build_file = "//nix:libusb.BUILD")
 
+# libunicorn — the Unicorn CPU-emulator C library. The pip `unicorn` Python
+# bindings (ctypes) are the API used by the firmware simulator (//rules/sim); the
+# actual libunicorn they dlopen is materialized here by Nix (not the prebuilt blob
+# in the manylinux wheel) and injected via LIBUNICORN_PATH — see //rules/sim.
+nix_pkg.attr(name = "unicorn", attr = "unicorn", repo = "@nixpkgs", build_file = "//nix:unicorn.BUILD")
+
 # --- ESP32-C6 (Milestone 2) ------------------------------------------------
 # esptool — elf -> flashable .bin.
 nix_pkg.attr(
@@ -215,6 +221,7 @@ use_repo(
     "arduino_esp32",
     "mbedtls_src",
     "libusb",
+    "unicorn",
 )
 
 # ---------------------------------------------------------------------------
@@ -276,6 +283,17 @@ pip.parse(
 )
 use_repo(pip, "pypi")
 
+# Separate hub for the Unicorn firmware simulator (//rules/sim): the `unicorn`
+# ctypes bindings + `pyelftools` (pure-Python ELF reader). Kept apart from the
+# pyOCD lock so the flash driver and the simulator evolve independently. The
+# native libunicorn these bindings load is supplied by Nix (@unicorn), not pip.
+pip.parse(
+    hub_name = "sim_pypi",
+    python_version = PYTHON_VERSION,
+    requirements_lock = "//rules/sim:requirements.lock",
+)
+use_repo(pip, "sim_pypi")
+
 # CMSIS Device Family Packs for pyOCD targets without built-in support (e.g. the
 # STM32G0B1). The extension turns //tools/pyocd:packs.lock into one downloaded
 # repo per pack + a @cmsis_packs hub; //tools/pyocd auto-passes them via --pack.
@@ -294,4 +312,6 @@ register_toolchains(
     "//toolchains/cc/esp32:cc_toolchain",
     # STM32G0 family (Cortex-M0+) — bare-metal, reuses @arm_gcc.
     "//toolchains/cc/stm32g0:cc_toolchain",
+    # Unicorn simulation target (Cortex-M33 / ARMv8-M) — bare-metal, reuses @arm_gcc.
+    "//toolchains/cc/sim_armv8m:cc_toolchain",
 )

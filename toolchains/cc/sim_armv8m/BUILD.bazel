@@ -1,0 +1,79 @@
+# Unicorn simulation cc_toolchain — ARMv8-M mainline (Cortex-M33), bare-metal.
+# Reuses the same Nix arm-none-eabi GCC (@arm_gcc) as the RP2350/STM32G0, gated to
+# the //platforms:sim_armv8m platform (constraint //platforms:sim_unicorn). Stubs
+# built for the simulator link freestanding against newlib-nano and the sim
+# runtime (//rules/sim:sim_rt), with the memory map supplied by a generated
+# linker script (from the simulation_platform's memory_map).
+load("//toolchains/cc:cc_toolchain_config.bzl", "cc_toolchain_config")
+
+package(default_visibility = ["//visibility:public"])
+
+# Cortex-M33 (ARMv8-M mainline) with the SAME FP profile as the RP2350 real
+# target (armv8-m.main+fp+dsp, single-precision fpv5, softfp ABI) — verified:
+# Unicorn's UC_CPU_ARM_CORTEX_M33 executes hardware VFP (vmul.f32/vfma.f32/...)
+# correctly, so stubs run the real FP the device would. softfp (not hard) keeps
+# floats in core registers at call boundaries, so the harness's integer-register
+# calling convention still passes/returns float bit patterns unchanged. (No
+# -mcmse: TrustZone secure-gateway support is only needed to match libpico; a
+# freestanding stub doesn't link it.)
+_CORE_ARCH_FLAGS = [
+    "-mcpu=cortex-m33",
+    "-mthumb",
+    "-march=armv8-m.main+fp+dsp",
+    "-mfloat-abi=softfp",
+    "-mfpu=fpv5-sp-d16",
+]
+
+cc_toolchain_config(
+    name = "config",
+    toolchain_identifier = "sim-armv8m-arm-none-eabi",
+    target_cpu = "cortex-m33",
+    target_system_name = "arm-none-eabi",
+    gcc = "@arm_gcc//:gcc",
+    gpp = "@arm_gcc//:g++",
+    ar = "@arm_gcc//:ar",
+    strip = "@arm_gcc//:strip",
+    compile_flags = _CORE_ARCH_FLAGS + [
+        "-ffunction-sections",
+        "-fdata-sections",
+        "-ffreestanding",
+        "-fno-exceptions",
+        "-fno-unwind-tables",
+        "-no-canonical-prefixes",
+    ],
+    # newlib-nano libc/libm + newlib's syscall stubs (nosys.specs), -nostartfiles
+    # because //rules/sim:sim_rt supplies _start. NOTE: deliberately NO
+    # --gc-sections here — a sim stub must retain every function a stimulus might
+    # call (see simulation_stub), even ones nothing references. The stub link
+    # passes --no-gc-sections; keeping the toolchain free of --gc-sections avoids
+    # a last-flag-wins fight. (See stm32g0 for the no-canonical-prefixes note.)
+    link_flags = _CORE_ARCH_FLAGS + [
+        "--specs=nano.specs",
+        "--specs=nosys.specs",
+        "-nostartfiles",
+    ],
+)
+
+cc_toolchain(
+    name = "sim_armv8m_cc",
+    all_files = "@arm_gcc//:all",
+    ar_files = "@arm_gcc//:all",
+    compiler_files = "@arm_gcc//:all",
+    dwp_files = "@arm_gcc//:all",
+    linker_files = "@arm_gcc//:all",
+    objcopy_files = "@arm_gcc//:all",
+    strip_files = "@arm_gcc//:all",
+    toolchain_config = ":config",
+)
+
+# Registered in MODULE.bazel; resolves when the target platform is sim_armv8m.
+toolchain(
+    name = "cc_toolchain",
+    target_compatible_with = [
+        "@platforms//cpu:armv8-m",
+        "@platforms//os:none",
+        "//platforms:sim_unicorn",
+    ],
+    toolchain = ":sim_armv8m_cc",
+    toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
+)

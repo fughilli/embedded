@@ -1,0 +1,99 @@
+# Unicorn-based firmware simulator: build firmware (and firmware snippets) into a
+# stub ELF for a simulation platform (memory map -> linker script), then execute
+# it under the Unicorn CPU emulator with cycle/stack/heap/static limits enforced.
+#
+# Public API (see sim.bzl):
+#   simulation_platform(name, memory_map, architecture, timing_model)
+#   simulation_stub(name, deps, entry_point, platform)
+#   simulation_test(name, stub, generator, srcs, max_cycles, max_stack,
+#                   max_static, max_dynamic)
+#
+# The `unicorn` Python bindings load their native libunicorn from Nix (@unicorn)
+# via the LIBUNICORN_PATH shim below — the pip wheel's bundled blob is unused.
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+load("@rules_uv//uv:pip.bzl", "pip_compile")
+
+package(default_visibility = ["//visibility:public"])
+
+# requirements.in -> requirements.lock (uv, universal mode; hermetic — no system
+# python/uv needed). Regenerate: `bazel run //rules/sim:requirements.update`.
+pip_compile(
+    name = "requirements",
+    requirements_in = "requirements.in",
+    requirements_txt = "requirements.lock",
+    universal = True,
+)
+
+# Stage the Nix libunicorn under its canonical soname next to the shim, so the
+# unicorn Python loader finds it via LIBUNICORN_PATH (which it probes for
+# `libunicorn.so.2`). ctypes loads it by absolute path regardless of extension.
+genrule(
+    name = "stage_nix_unicorn",
+    srcs = ["@unicorn//:lib"],
+    outs = ["_nixlib/libunicorn.so.2"],
+    cmd = "\n".join([
+        "mkdir -p $(RULEDIR)/_nixlib",
+        "cp $(location @unicorn//:lib) $(RULEDIR)/_nixlib/libunicorn.so.2",
+    ]),
+)
+
+# The Nix libunicorn (as runfiles) + the shim that points LIBUNICORN_PATH at it.
+# Import this and call `unicorn_nix.install()` BEFORE `import unicorn`.
+py_library(
+    name = "unicorn_nix",
+    srcs = ["unicorn_nix.py"],
+    data = [":stage_nix_unicorn"],
+    imports = ["."],
+)
+
+# The stimulus-generator ABC that a test's `generator` py_library implements.
+py_library(
+    name = "stimulus",
+    srcs = ["stimulus.py"],
+    imports = ["."],
+)
+
+# The Peripheral ABC that a full-app test's `peripherals` py_library implements.
+py_library(
+    name = "peripherals",
+    srcs = ["peripherals.py"],
+    imports = ["."],
+)
+
+# The Unicorn execution harness: loads a stub ELF, maps memory per the platform's
+# emu config, runs stimuli, enforces the max_* limits.
+py_library(
+    name = "harness",
+    srcs = ["harness.py"],
+    imports = ["."],
+    deps = [
+        ":stimulus",
+        ":unicorn_nix",
+        "@sim_pypi//pyelftools",
+        "@sim_pypi//unicorn",
+    ],
+)
+
+# memory_map.json -> linker script + gdb memory layout + normalized emu config.
+py_binary(
+    name = "gen_platform",
+    srcs = ["gen_platform.py"],
+    imports = ["."],
+    main = "gen_platform.py",
+)
+
+# The sim C runtime linked into every stub: reset/_start, .data/.bss init, and a
+# bump allocator over the linker-script heap region (so max_dynamic maps to heap
+# canary consumption). Compiled for the sim platform via the stub's transition.
+cc_library(
+    name = "sim_rt",
+    srcs = ["rt/sim_rt.c"],
+    hdrs = ["rt/sim_rt.h"],
+    alwayslink = True,
+    target_compatible_with = ["//platforms:sim_unicorn"],
+    visibility = ["//visibility:public"],
+)
+
+# Shared py_test entry points referenced by the sim.bzl macros from the caller's
+# package (test_main = stub perf tests, app_main = full-app emulation).
+exports_files(["test_main.py", "app_main.py"])

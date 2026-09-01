@@ -12,6 +12,18 @@ package(default_visibility = ["//visibility:public"])
 
 constraint_setting(name = "board")
 
+# Orthogonal to `board`: marks a target as built to run under the Unicorn CPU
+# emulator (//rules/sim) rather than on real silicon. It keys the sim
+# cc_toolchain and lets sim-only support code (e.g. //rules/sim:sim_rt) gate
+# itself with target_compatible_with. A simulation_platform picks the CPU
+# architecture (e.g. armv8-m) on top of this.
+constraint_setting(name = "runtime_env")
+
+constraint_value(
+    name = "sim_unicorn",
+    constraint_setting = ":runtime_env",
+)
+
 constraint_value(
     name = "rp2350_board",
     constraint_setting = ":board",
@@ -84,6 +96,20 @@ platform(
     ],
 )
 
+# Unicorn simulation target, ARMv8-M (Cortex-M33) profile. cpu:armv8-m is the
+# same ISA the RP2350 uses, but the `sim_unicorn` marker (not rp2350_board)
+# resolves the dedicated sim cc_toolchain (//toolchains/cc/sim_armv8m) and keeps
+# the emulated build independent of any physical board. A simulation_platform of
+# architecture "armv8-m" transitions the stub to this platform.
+platform(
+    name = "sim_armv8m",
+    constraint_values = [
+        "@platforms//cpu:armv8-m",
+        "@platforms//os:none",
+        ":sim_unicorn",
+    ],
+)
+
 # config_settings so libraries can select() on the active board.
 config_setting(
     name = "is_rp2350",
@@ -103,4 +129,9 @@ config_setting(
 config_setting(
     name = "is_stm32g0",
     constraint_values = [":stm32g0_board"],
+)
+
+config_setting(
+    name = "is_sim",
+    constraint_values = [":sim_unicorn"],
 )
