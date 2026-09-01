@@ -1,5 +1,52 @@
 # WORKLOG
 
+## ✅ UNICORN SIM — RP2350 blinks in-emulator + GDB support (2026-09-01)
+
+### RP2350 arduino blink boots to loop() and blinks the LED
+`//apps/blink:rp2350_boot_sim` now boots the EXACT arduino-pico image from reset
+all the way into arduino loop(), toggling the on-board LED (GPIO25). What it took
+beyond the earlier clock-init milestone (all in //rules/sim/plugins/rp2350):
+- Full CLOCKS model: `clk[].SELECTED = 1<<CTRL.SRC` (from pico-sdk clocks.c);
+  XOSC.STABLE / PLL.CS.LOCK / RESETS.RESET_DONE / PSM.DONE status; TIMER advancing
+  for delay(); a bootrom lock word (0x400e0828) seeded.
+- The RP2350 atomic register aliases (SET/CLR/XOR at addr bits [13:12]) emulated
+  for the whole APB window (the SDK's hw_set/clear_bits pervasively use them).
+- RP2350 CUSTOM COPROCESSORS: the M33 here has RCP/DCP/GPIO coprocessors Unicorn's
+  generic core can't execute (undefined-instruction fault in runtime_init). Scan
+  flash for the 32-bit coproc encodings and skip the RCP/DCP integrity canaries;
+  EMULATE the GPIO coprocessor `put` (mcrr p0,#4,gpio,val) -> SIO — that's how
+  gpio_put/digitalWrite drives the LED. WFE/WFI -> no-ops.
+- THE killer bug: boot_app loaded PT_LOAD by VMA, but the real reset path runs
+  crt0 which copies .data from its flash LMA to RAM; loading by VMA meant crt0
+  copied the *uninitialized* LMA (zeros) over initialized globals -> corrupted
+  heap -> malloc looped forever. Fix: load by LMA (p_paddr) in boot mode. (Also
+  latently wrong for the STM32G0 app, which just happens to use no initialized
+  globals.)
+Gotcha: redirecting PC from a Unicorn hook / resuming must keep the thumb bit
+(even PC -> ARM decode -> invalid instruction). THUMB-only mode (no MCLASS) boots
+STM32G0 but NOT RP2350 (needs M-profile-only instructions).
+
+### GDB support (gdb_support.md): emulation + real hardware
+- firmware_binary provides FirmwareInfo(elf, image, board, name).
+- Emulation: simulation_app / simulation_test each emit a `<name>.debug` py_binary
+  that serves a GDB stub on the Unicorn engine (background thread) and launches
+  arm-none-eabi-gdb attached, halted at the entry (app: main; test: the first
+  stimulus's entrypoint, args pre-loaded). Interactive breakpoints/mem/step;
+  server torn down on GDB exit.
+    `bazel run //apps/blink:rp2350_boot_sim.debug`
+    `bazel run //apps/sim_demo:demo_test.debug`
+  udbserver (the intended stub) PANICS on Cortex-M: it does
+  `Mode::try_from(uc.query(MODE))` and Unicorn returns THUMB|MCLASS (0x30), not a
+  single Mode variant; our firmware needs MCLASS. So instead we ship a compact
+  in-tree GDB RSP stub (rules/sim/uc_gdbserver.py, udbserver-drop-in) driving the
+  real MCLASS engine (m-profile target.xml, g/G/p/P, m/M, Z/z, continue+Ctrl-C,
+  step). Verified with real arm-none-eabi-gdb on STM32G0 + RP2350 + a perf stub.
+  Bug found writing it: GDB's leading '+' ack must be skipped when framing packets,
+  and continue must run with a nonzero count + thumb-bit PC.
+- Hardware: `pyocd_debug(name, firmware, target, flash=True)` starts
+  `pyocd gdbserver` + arm-none-eabi-gdb attached (flash=False attaches to a running
+  target). Wired: `bazel run //apps/blink_stm32g0b1:debug`.
+
 ## 🚧 UNICORN SIM — ARDUINO APP BOOT: RP2350 partial, ESP32 findings (2026-09-01)
 
 Goal: boot the arduino blink apps (//apps/blink) for ESP32 + RP2350 in-emulator.
