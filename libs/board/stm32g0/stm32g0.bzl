@@ -22,8 +22,11 @@ STM32G0_VARIANTS = {
     "stm32g070": struct(flash_k = 128, ram_k = 36, pyocd_target = "stm32g070xx"),
     "stm32g071": struct(flash_k = 128, ram_k = 36, pyocd_target = "stm32g071xx"),
     "stm32g081": struct(flash_k = 128, ram_k = 36, pyocd_target = "stm32g081xx"),
-    # Category 5 (larger Flash/SRAM, more peripherals) — NUCLEO-G0B1RE default.
-    "stm32g0b1": struct(flash_k = 512, ram_k = 144, pyocd_target = "stm32g0b1xx"),
+    # Category 5 (larger Flash/SRAM, more peripherals). pyOCD targets are
+    # per-part (from the CMSIS pack), so pick the exact device: stm32g0b1 here is
+    # the STM32G0B1RCT6 (256K Flash / 144K SRAM). Add a distinct entry for other
+    # suffixes (e.g. stm32g0b1retx = 512K).
+    "stm32g0b1": struct(flash_k = 256, ram_k = 144, pyocd_target = "stm32g0b1rctx"),
     "stm32g0c1": struct(flash_k = 512, ram_k = 144, pyocd_target = "stm32g0c1xx"),
 }
 

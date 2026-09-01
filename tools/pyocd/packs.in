@@ -1,0 +1,4 @@
+# pyOCD targets whose CMSIS Device Family Pack must be vendored, one per line.
+# Regenerate the lock:  bazel run //tools/pyocd:update_packs
+# (resolves each target -> pack via the CMSIS index, downloads + hashes it).
+stm32g0b1rctx

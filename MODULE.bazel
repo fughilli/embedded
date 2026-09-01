@@ -276,6 +276,14 @@ pip.parse(
 )
 use_repo(pip, "pypi")
 
+# CMSIS Device Family Packs for pyOCD targets without built-in support (e.g. the
+# STM32G0B1). The extension turns //tools/pyocd:packs.lock into one downloaded
+# repo per pack + a @cmsis_packs hub; //tools/pyocd auto-passes them via --pack.
+# Regenerate the lock: `bazel run //tools/pyocd:update_packs`.
+cmsis = use_extension("//rules:cmsis_pack.bzl", "cmsis_packs")
+cmsis.parse(lock = "//tools/pyocd:packs.lock")
+use_repo(cmsis, "cmsis_packs")
+
 register_toolchains(
     "@rust_toolchains//:all",
     # bindgen toolchain backed by Nix prebuilt clang/libclang (the default

@@ -48,15 +48,36 @@ py_library(
     deps = ["@pypi//pyusb"],
 )
 
+# Vendored CMSIS Device Family Packs (from packs.lock via the cmsis_packs
+# extension), passed to pack-aware pyocd subcommands by cmsis_pack_inject.
+py_library(
+    name = "cmsis_packs",
+    srcs = ["cmsis_pack_inject.py"],
+    data = ["@cmsis_packs//:all_packs"],
+    imports = ["."],
+)
+
 py_binary(
     name = "pyocd",
     srcs = ["pyocd_main.py"],
     imports = ["."],
     main = "pyocd_main.py",
     deps = [
+        ":cmsis_packs",
         ":nix_libusb",
         "@pypi//pyocd",
     ],
+)
+
+# Resolve packs.in -> packs.lock (CMSIS index lookup + download + hash).
+#   bazel run //tools/pyocd:update_packs
+py_binary(
+    name = "update_packs",
+    srcs = ["update_packs.py"],
+    data = ["packs.in"],
+    imports = ["."],
+    main = "update_packs.py",
+    deps = ["@pypi//cmsis_pack_manager"],
 )
 
 # Hardware-free check that pyusb binds the Nix libusb (see verify_backend.py).

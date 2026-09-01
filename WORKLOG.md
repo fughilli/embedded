@@ -1,5 +1,32 @@
 # WORKLOG
 
+## ✅ CMSIS DEVICE FAMILY PACKS VENDORED FOR pyOCD (2026-09-01)
+
+A pyOCD `--target` outside its built-ins (the STM32G0B1 → `stm32g0b1rctx`, an
+STM32G0B1RCT6) needs a CMSIS Device Family Pack. Rather than a stateful
+`pyocd pack install` into `~/.cache`, packs are vendored hermetically via a new
+ruleset (`rules/cmsis_pack.bzl`) that mirrors the pip lockfile flow:
+
+- `tools/pyocd/packs.in` (targets, one/line) → `bazel run //tools/pyocd:update_packs`
+  → `tools/pyocd/packs.lock` (JSON: per-pack url+sha256). The generator
+  (`update_packs.py`) resolves each target → pack via `cmsis_pack_manager`'s
+  index (the same index `pyocd pack find` uses), derives the pack URL from the
+  pack PDSC's `<url>`, downloads + hashes it. Verified: the generated lock is
+  byte-identical to the hand-checked seed (Keil.STM32G0xx_DFP 2.1.0).
+- The `cmsis_packs` module extension `json.decode`s the lock and creates **one
+  `@cmsis_pack_<slug>` repo per pack** (http download, sha256-pinned) + a
+  `@cmsis_packs` hub that symlinks them all under `packs/`. //tools/pyocd depends
+  on `@cmsis_packs//:all_packs` (runfiles) and `cmsis_pack_inject.py` auto-adds
+  `--pack <file>` for each to pack-aware subcommands (flash/list/erase/...).
+- Result: `bazel run //tools/pyocd -- list --targets --source pack` shows
+  `stm32g0b1rctx` (43 G0B1 parts) with NO manual pack install — proven on Linux.
+
+Gotcha that cost a debug cycle: locating the packs in runfiles by splitting the
+module path on `/_main/` picked the wrong root — the **execroot** path itself
+contains `/_main/` (`.../execroot/_main/bazel-out/.../X.runfiles/_main/...`).
+Anchor on `.runfiles/` instead. Also: the STM32G0B1RCT6 is 256K Flash / 144K
+SRAM, so the demo variant is now `stm32g0b1` = (256K, 144K, `stm32g0b1rctx`).
+
 ## ✅ pyOCD VENDORED AS A HERMETIC FLASH DRIVER (2026-08-31)
 
 `//tools/pyocd` — pyOCD brought in via Bazel's Python mechanism (first use of

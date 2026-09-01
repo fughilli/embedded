@@ -72,8 +72,8 @@ bazel run //apps/blink:flash_esp32               # classic ESP32/WROOM (bootload
 bazel run //apps/rainbow:flash_rp2350            # same targets exist for the rainbow app
 
 # STM32G0B1 (no built-in USB DFU): flash the ELF over SWD via pyOCD + a probe.
-bazel run //tools/pyocd -- pack install stm32g0b1   # one-time: fetch the CMSIS pack
-bazel run //apps/blink_stm32g0b1:flash_stm32g0b1    # pyocd flash --target stm32g0b1xx
+# The STM32G0 CMSIS pack is vendored (see below), so no manual `pack install`.
+bazel run //apps/blink_stm32g0b1:flash_stm32g0b1    # pyocd flash --target stm32g0b1rctx
 ```
 
 Each `flash` target builds the firmware, then execs the Nix-provided tool over
@@ -107,6 +107,25 @@ editing `tools/pyocd/requirements.in` with `bazel run
 `list`/`flash` enumerate USB, so they only complete where a probe (and usbfs
 access) is present — reaching that libusb enumeration is itself proof the Nix
 libusb is wired in.
+
+#### CMSIS Device Family Packs (`--target` support)
+
+A pyOCD `--target` outside pyOCD's built-ins (e.g. `stm32g0b1rctx`) lives in a
+CMSIS Device Family Pack. Packs are **vendored hermetically**, mirroring the pip
+lockfile flow (`rules/cmsis_pack.bzl`):
+
+- `tools/pyocd/packs.in` — pyOCD targets to support, one per line.
+- `tools/pyocd/packs.lock` — generated JSON: each pack's URL + sha256, resolved
+  from `packs.in` via the CMSIS index. Regenerate with
+  `bazel run //tools/pyocd:update_packs`.
+- The `cmsis_packs` module extension turns the lock into **one downloaded repo
+  per pack** plus a `@cmsis_packs` hub; `//tools/pyocd` stages them as runfiles
+  and auto-passes `--pack` to pack-aware subcommands. So `stm32g0b1rctx` is
+  recognized out of the box — no `pyocd pack install`, no `~/.cache` state.
+
+Add a target: append it to `packs.in`, run `update_packs`, commit the updated
+`packs.lock`. Verify (needs no hardware):
+`bazel run //tools/pyocd -- list --targets --source pack | grep <target>`.
 
 ## Rust ↔ C/C++ interop
 

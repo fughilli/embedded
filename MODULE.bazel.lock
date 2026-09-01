@@ -180,6 +180,40 @@
   },
   "selectedYankedVersions": {},
   "moduleExtensions": {
+    "//rules:cmsis_pack.bzl%cmsis_packs": {
+      "general": {
+        "bzlTransitiveDigest": "qZ2kDv3Z2yanNqW0565ZCSni/+XecdE8S++z4F/l8Uc=",
+        "usagesDigest": "l7Wk3OotcKo2KRtzASZWiNdsmRhgAvhbDA2ZP9HvmEk=",
+        "recordedFileInputs": {
+          "@@//tools/pyocd/packs.lock": "41f82eb0ae93ef31e6db8a0cda8e37cf629b99cf3281338a972878afcb75c190"
+        },
+        "recordedDirentsInputs": {},
+        "envVariables": {},
+        "generatedRepoSpecs": {
+          "cmsis_pack_keil_stm32g0xx_dfp": {
+            "bzlFile": "@@//rules:cmsis_pack.bzl",
+            "ruleClassName": "cmsis_pack_repo",
+            "attributes": {
+              "urls": [
+                "https://www.keil.com/pack/Keil.STM32G0xx_DFP.2.1.0.pack"
+              ],
+              "sha256": "3076c0f9a6a9a99f7a2325a2e519bed0ac3a3c1db3553748ceeb5b0676645889",
+              "filename": "Keil.STM32G0xx_DFP.2.1.0.pack"
+            }
+          },
+          "cmsis_packs": {
+            "bzlFile": "@@//rules:cmsis_pack.bzl",
+            "ruleClassName": "cmsis_pack_hub",
+            "attributes": {
+              "packs": [
+                "@@_main~cmsis_packs~cmsis_pack_keil_stm32g0xx_dfp//:Keil.STM32G0xx_DFP.2.1.0.pack"
+              ]
+            }
+          }
+        },
+        "recordedRepoMappingEntries": []
+      }
+    },
     "//rules:extensions.bzl%arduino": {
       "general": {
         "bzlTransitiveDigest": "L6BrQLO40uqvoG37kXEbRwMtmSK5lrIoiM2UWrg76Tw=",
