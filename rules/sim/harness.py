@@ -559,6 +559,11 @@ def _install_idle_driver(uc, emu_config, peripherals, nvic):
     uc.sim_now = 0  # shared virtual-time base (ticks); a timer model reads it for CNT
 
     def on_wait(uc_, addr, size, _ud):
+        # The WFE/WFI completes (wakes); execution resumes at the NEXT instruction.
+        # Set PC there up front so that if we now take an exception, the stacked
+        # return address is post-WFE (so the executor re-polls woken tasks on
+        # return), and if we don't, we simply fall through past the WFE.
+        uc_.reg_write(UC_ARM_REG_PC, (addr + 2) | 1)
         # 1) Something already pending+enabled+unmasked? Take it.
         if nvic.deliver():
             state["idle"] = 0
@@ -580,12 +585,10 @@ def _install_idle_driver(uc, emu_config, peripherals, nvic):
             if nvic.deliver():
                 state["idle"] = 0
                 return
-        # 4) Nothing to do — skip the WFE. Bail if the app has fully quiesced.
+        # 4) Nothing to do — the WFE was already skipped. Bail if fully quiesced.
         state["idle"] += 1
         if state["idle"] > _IDLE_LIMIT:
             uc_.emu_stop()
-            return
-        uc_.reg_write(UC_ARM_REG_PC, (addr + 2) | 1)
 
     # Find WFE/WFI in the code (flash/rom) regions and hook each occurrence.
     for r in emu_config["regions"]:
