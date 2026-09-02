@@ -40,8 +40,8 @@ def _debug_binary(name, mode, elf_target, emu_target, extra_args, extra_deps, ex
     launches GDB attached to it, halted at the entry point."""
     py_binary(
         name = name,
-        srcs = ["//rules/sim:sim_debug_main.py"],
-        main = "//rules/sim:sim_debug_main.py",
+        srcs = [Label("//rules/sim:sim_debug_main.py")],
+        main = Label("//rules/sim:sim_debug_main.py"),
         args = [
             "--mode=%s" % mode,
             "--elf=$(rlocationpath %s)" % elf_target,
@@ -50,10 +50,10 @@ def _debug_binary(name, mode, elf_target, emu_target, extra_args, extra_deps, ex
         ] + extra_args,
         data = [elf_target, emu_target, _GDB, _GDB_FILES] + extra_data,
         deps = [
-            "//rules/sim:harness",
-            "//rules/sim:peripherals",
-            "//rules/sim:gdb_launch",
-            "//rules/sim:uc_gdbserver",
+            Label("//rules/sim:harness"),
+            Label("//rules/sim:peripherals"),
+            Label("//rules/sim:gdb_launch"),
+            Label("//rules/sim:uc_gdbserver"),
             "@rules_python//python/runfiles",
         ] + extra_deps,
         tags = ["manual"],  # a bazel-run debug tool, not built by //...
@@ -81,17 +81,20 @@ SimulationStubInfo = provider(
 )
 
 # architecture -> the Bazel platform constraints its stubs compile under. The
-# sim cc_toolchain (//toolchains/cc/*) resolves off exactly these.
+# sim cc_toolchain (//toolchains/cc/*) resolves off exactly these. The sim_unicorn
+# constraint is wrapped in Label() so it resolves to THIS module's //platforms
+# even when simulation_platform is called from a dependent repo (a bare
+# "//platforms:sim_unicorn" would resolve against the caller's package).
 _ARCH = {
     "armv8-m": struct(constraints = [
         "@platforms//cpu:armv8-m",
         "@platforms//os:none",
-        "//platforms:sim_unicorn",
+        Label("//platforms:sim_unicorn"),
     ]),
     "armv6-m": struct(constraints = [
         "@platforms//cpu:armv6-m",
         "@platforms//os:none",
-        "//platforms:sim_unicorn",
+        Label("//platforms:sim_unicorn"),
     ]),
 }
 
@@ -234,7 +237,7 @@ def simulation_stub(name, platform, deps = [], entry_point = "_start", **kwargs)
     ]
     native.cc_binary(
         name = name + "_bin",
-        deps = deps + ["//rules/sim:sim_rt"],
+        deps = deps + [Label("//rules/sim:sim_rt")],
         additional_linker_inputs = [platform],
         linkopts = linkopts,
         target_compatible_with = ["//platforms:sim_unicorn"],
@@ -273,8 +276,8 @@ def simulation_test(
     )
 
     deps = [
-        "//rules/sim:harness",
-        "//rules/sim:stimulus",
+        Label("//rules/sim:harness"),
+        Label("//rules/sim:stimulus"),
         generator,
         "@rules_python//python/runfiles",
     ]
@@ -293,7 +296,7 @@ def simulation_test(
             name = name + "_srcs",
             srcs = [srcs],
             imports = ["."],
-            deps = ["//rules/sim:harness", "//rules/sim:stimulus"],
+            deps = [Label("//rules/sim:harness"), Label("//rules/sim:stimulus")],
             visibility = ["//visibility:private"],
         )
         deps.append(":" + name + "_srcs")
@@ -306,8 +309,8 @@ def simulation_test(
 
     py_test(
         name = name,
-        srcs = ["//rules/sim:test_main.py"],
-        main = "//rules/sim:test_main.py",
+        srcs = [Label("//rules/sim:test_main.py")],
+        main = Label("//rules/sim:test_main.py"),
         args = args,
         data = data,
         deps = deps,
@@ -324,7 +327,7 @@ def simulation_test(
         elf_target = ":" + name + "_dbgelf",
         emu_target = ":" + name + "_emu",
         extra_args = ["--generator=%s" % generator_module],
-        extra_deps = [generator, "//rules/sim:stimulus"],
+        extra_deps = [generator, Label("//rules/sim:stimulus")],
         extra_data = [],
     )
 
@@ -353,7 +356,7 @@ def sim_peripheral_plugin(name, srcs = None, deps = [], **kwargs):
         name = name,
         srcs = srcs or [name + ".py"],
         imports = ["."],
-        deps = deps + ["//rules/sim:peripherals"],
+        deps = deps + [Label("//rules/sim:peripherals")],
         **kwargs
     )
 
@@ -393,8 +396,8 @@ def simulation_app(
     )
 
     deps = [
-        "//rules/sim:harness",
-        "//rules/sim:peripherals",
+        Label("//rules/sim:harness"),
+        Label("//rules/sim:peripherals"),
         "@rules_python//python/runfiles",
     ] + plugins
     args = [
@@ -409,7 +412,7 @@ def simulation_app(
             name = name + "_checker",
             srcs = [checker],
             imports = ["."],
-            deps = ["//rules/sim:peripherals"],
+            deps = [Label("//rules/sim:peripherals")],
             visibility = ["//visibility:private"],
         )
         deps.append(":" + name + "_checker")
@@ -420,8 +423,8 @@ def simulation_app(
 
     py_test(
         name = name,
-        srcs = ["//rules/sim:app_main.py"],
-        main = "//rules/sim:app_main.py",
+        srcs = [Label("//rules/sim:app_main.py")],
+        main = Label("//rules/sim:app_main.py"),
         args = args,
         data = data,
         deps = deps,

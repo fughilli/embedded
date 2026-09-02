@@ -46,7 +46,15 @@ from unicorn.arm_const import (  # noqa: E402
 
 from elftools.elf.elffile import ELFFile  # noqa: E402
 
+import cortexm  # noqa: E402
 from stimulus import Buffer  # noqa: E402
+
+# Thumb hint encodings the idle loop watches for (WFE/WFI = the app is waiting for
+# an interrupt; SEV is a plain no-op the core already handles).
+_WFE, _WFI = 0xBF20, 0xBF30
+# Safety net: if the firmware idles this many times with nothing left to deliver
+# and no pending virtual-time deadline, the app has quiesced — stop emulation.
+_IDLE_LIMIT = 20000
 
 _ARG_REGS = [UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3]
 
@@ -493,16 +501,108 @@ def build_app(elf_path, emu_config, peripherals=()):
 
     for p in peripherals:
         _install_peripheral(uc, p, symbols)
-    for p in peripherals:
-        p.attach(uc, symbols)
 
     vt = _resolve_vector_table(emu_config.get("vector_table"), symbols,
                                emu_config["regions"])
+
+    # Interrupt-driven firmware: stand up the NVIC + exception model and the idle
+    # driver BEFORE attach(), so a peripheral's attach() can already see uc.nvic.
+    if emu_config.get("interrupts"):
+        import os
+        nvic = cortexm.CortexMNvic(uc, vt)
+        nvic.trace = bool(os.environ.get("SIM_DEBUG"))
+        nvic.install()
+        uc.nvic = nvic
+        _install_scs(uc, nvic)
+        _install_idle_driver(uc, emu_config, peripherals, nvic)
+    else:
+        uc.nvic = None
+
+    for p in peripherals:
+        p.attach(uc, symbols)
+
     sp = int.from_bytes(uc.mem_read(vt, 4), "little")
     pc = int.from_bytes(uc.mem_read(vt + 4, 4), "little")
     uc.reg_write(UC_ARM_REG_SP, sp)
     uc.reg_write(UC_ARM_REG_PC, pc)
     return uc, pc, symbols
+
+
+def _install_scs(uc, nvic):
+    """Map the System Control Space as backing memory and route the NVIC/SysTick/
+    VTOR registers through the interrupt controller (other SCS words just read/write
+    their backing store)."""
+    base, size = 0xE000E000, 0x1000
+    try:
+        uc.mem_map(base, size, UC_PROT_READ | UC_PROT_WRITE)
+    except UcError:
+        pass  # already mapped (e.g. by _enable_fpu_uc, which writes CPACR here)
+
+    def on_read(uc_, access, addr, size_, value, _ud):
+        v = nvic.scs_read(addr, size_)
+        if v is not None:
+            uc_.mem_write(addr, int(v).to_bytes(size_, "little"))
+
+    def on_write(uc_, access, addr, size_, value, _ud):
+        nvic.scs_write(addr, size_, value)
+
+    uc.hook_add(UC_HOOK_MEM_READ, on_read, begin=base, end=base + size)
+    uc.hook_add(UC_HOOK_MEM_WRITE, on_write, begin=base, end=base + size)
+
+
+def _install_idle_driver(uc, emu_config, peripherals, nvic):
+    """Hook every WFE/WFI in the loaded image and, when the firmware idles there,
+    make progress: deliver a pending IRQ, let reactive models inject work, or
+    fast-forward virtual time to the nearest model deadline and deliver what comes
+    due. If nothing can ever happen again, stop (the app has quiesced)."""
+    state = {"now": 0, "idle": 0}
+    uc.sim_now = 0  # shared virtual-time base (ticks); a timer model reads it for CNT
+
+    def on_wait(uc_, addr, size, _ud):
+        # The WFE/WFI completes (wakes); execution resumes at the NEXT instruction.
+        # Set PC there up front so that if we now take an exception, the stacked
+        # return address is post-WFE (so the executor re-polls woken tasks on
+        # return), and if we don't, we simply fall through past the WFE.
+        uc_.reg_write(UC_ARM_REG_PC, (addr + 2) | 1)
+        # 1) Something already pending+enabled+unmasked? Take it.
+        if nvic.deliver():
+            state["idle"] = 0
+            return
+        # 2) Reactive models (e.g. a USB host driving the next transaction).
+        for p in peripherals:
+            p.on_idle(uc_, nvic)
+        if nvic.deliver():
+            state["idle"] = 0
+            return
+        # 3) Fast-forward virtual time to the nearest deadline and fire it.
+        deadlines = [d for d in (p.next_deadline(state["now"]) for p in peripherals)
+                     if d is not None]
+        if deadlines:
+            state["now"] = min(deadlines)
+            uc_.sim_now = state["now"]
+            for p in peripherals:
+                p.fire(uc_, nvic, state["now"])
+            if nvic.deliver():
+                state["idle"] = 0
+                return
+        # 4) Nothing to do — the WFE was already skipped. Bail if fully quiesced.
+        state["idle"] += 1
+        if state["idle"] > _IDLE_LIMIT:
+            uc_.emu_stop()
+
+    # Find WFE/WFI in the code (flash/rom) regions and hook each occurrence.
+    for r in emu_config["regions"]:
+        if r.get("kind") != "rom" and not r.get("load"):
+            continue
+        base, size = r["base"], r["size"]
+        try:
+            code = bytes(uc.mem_read(base, size))
+        except UcError:
+            continue
+        for i in range(0, len(code) - 1, 2):
+            hw = code[i] | (code[i + 1] << 8)
+            if hw in (_WFE, _WFI):
+                uc.hook_add(UC_HOOK_CODE, on_wait, begin=base + i, end=base + i + 1)
 
 
 def boot_app(elf_path, emu_config, peripherals=(), max_cycles=None, count_instructions=False):
@@ -512,11 +612,19 @@ def boot_app(elf_path, emu_config, peripherals=(), max_cycles=None, count_instru
     is hit (firmware main loops never return). `count_instructions` adds a per-
     instruction hook (needed for a retired-instruction count, but ~20x slower —
     off by default so busy-wait delays run at native speed)."""
-    uc, pc, _symbols = build_app(elf_path, emu_config, peripherals)
+    uc, pc, symbols = build_app(elf_path, emu_config, peripherals)
 
     counter = {"n": 0}
     if count_instructions:
         uc.hook_add(UC_HOOK_CODE, lambda u, a, s, d: counter.__setitem__("n", counter["n"] + 1))
+
+    # SIM_DEBUG: sample basic-block entry PCs into a histogram to locate spin loops
+    # (which symbol the firmware is stuck in when it hits the budget).
+    import os
+    hot = {}
+    if os.environ.get("SIM_DEBUG"):
+        from unicorn import UC_HOOK_BLOCK
+        uc.hook_add(UC_HOOK_BLOCK, lambda u, a, s, d: hot.__setitem__(a, hot.get(a, 0) + 1))
 
     budget = max_cycles or 100_000_000  # hard cap so a non-blinking app can't hang
     try:
@@ -524,5 +632,25 @@ def boot_app(elf_path, emu_config, peripherals=(), max_cycles=None, count_instru
     except UcError as e:
         raise SimError("app faulted: %s (pc=0x%x)" % (e, uc.reg_read(UC_ARM_REG_PC)))
 
+    if os.environ.get("SIM_DEBUG"):
+        final = uc.reg_read(UC_ARM_REG_PC)
+        print("  [debug] final pc=0x%08x  %s" % (final, _sym_for(symbols, final)))
+        top = sorted(hot.items(), key=lambda kv: kv[1], reverse=True)[:12]
+        print("  [debug] hottest blocks:")
+        for addr, n in top:
+            print("    0x%08x  x%-9d %s" % (addr, n, _sym_for(symbols, addr)))
+
     done = any(p.done() for p in peripherals)
     return AppResult(uc, list(peripherals), counter["n"], hit_budget=not done)
+
+
+def _sym_for(symbols, addr):
+    """Best-effort 'symbol+offset' for an address from the ELF symbol map."""
+    best_name, best_addr = None, -1
+    for name, a in symbols.items():
+        a &= ~1
+        if a <= addr and a > best_addr:
+            best_name, best_addr = name, a
+    if best_name is None:
+        return "?"
+    return "%s+0x%x" % (best_name, addr - best_addr)

@@ -60,6 +60,16 @@ py_library(
     imports = ["."],
 )
 
+# Minimal Cortex-M interrupt controller (NVIC + SysTick + exception entry/return)
+# so interrupt-driven firmware (Embassy/RTIC/RTOS) makes progress under Unicorn,
+# which models the core but no NVIC. Used by the full-app harness.
+py_library(
+    name = "cortexm",
+    srcs = ["cortexm.py"],
+    imports = ["."],
+    deps = ["@sim_pypi//unicorn"],
+)
+
 # Shared GDB-session launcher (start stub -> wait -> run gdb -> shut down), used by
 # both the emulator (.debug) and hardware (pyocd_debug) sides.
 py_library(
@@ -84,6 +94,7 @@ py_library(
     srcs = ["harness.py"],
     imports = ["."],
     deps = [
+        ":cortexm",
         ":stimulus",
         ":unicorn_nix",
         "@sim_pypi//pyelftools",
