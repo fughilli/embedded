@@ -175,6 +175,10 @@ def gen_emu_config(mm, arch, timing):
         # the RP2350 puts it after its boot metadata), else the first rom origin.
         "vector_table": mm.get("vector_table",
                                parse_size(rom["origin"]) if rom else 0),
+        # Full-app mode: when true, the harness stands up the Cortex-M interrupt
+        # controller (NVIC + SysTick + exception entry/return) so interrupt-driven
+        # firmware makes progress; peripheral models raise IRQs via uc.nvic.
+        "interrupts": bool(mm.get("interrupts", False)),
     }
     if timing:
         cfg["timing_model"] = timing

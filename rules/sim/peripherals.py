@@ -94,3 +94,23 @@ class Peripheral(abc.ABC):
         """Return True once the app has exhibited enough behavior to judge; the
         harness then stops emulation. Default: never (rely on the cycle budget)."""
         return False
+
+    # -- interrupt-driven models (harness idle loop) ------------------------
+    # These let a model participate in interrupt delivery. The harness calls them
+    # at the firmware's idle points (WFE/WFI) once the emu_config opts in with
+    # `"interrupts": true`; a model raises IRQs via `uc.nvic` (a CortexMNvic).
+    def on_idle(self, uc, nvic):
+        """Called each time the firmware idles (WFE/WFI). A *reactive* model (e.g.
+        a USB host driving a transaction, or a line that just went ready) does its
+        work here and pends the relevant IRQ. Default: nothing."""
+
+    def next_deadline(self, now):
+        """For a *time-driven* model: the next virtual-time instant (an int in the
+        shared time base) at which it wants to act, or None. The harness, when the
+        firmware would otherwise idle forever, fast-forwards `now` to the nearest
+        deadline across all models and calls :meth:`fire`. Default: none."""
+        return None
+
+    def fire(self, uc, nvic, now):
+        """Called after the harness advances virtual time to `now`; a time-driven
+        model pends any IRQ whose deadline has arrived. Default: nothing."""
