@@ -1,0 +1,12 @@
+# ARM semihosting console I/O + exit over `bkpt 0xAB`, for bare-metal Cortex-M
+# firmware run under a debugger. Pure Cortex-M — no board dependency — so any
+# ARMv6-M/v7-M/v8-M app can link it (guards against HardFault when no debugger is
+# attached via CoreDebug->DHCSR C_DEBUGEN).
+package(default_visibility = ["//visibility:public"])
+
+cc_library(
+    name = "semihost",
+    srcs = ["semihost.c"],
+    hdrs = ["semihost.h"],
+    # `#include "libs/semihost/semihost.h"` resolves against the repo root via -iquote.
+)

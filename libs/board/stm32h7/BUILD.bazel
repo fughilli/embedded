@@ -1,0 +1,23 @@
+# STM32H7 bare-metal board support: startup (system vector table + Reset_Handler
+# with FPU enable) + the per-part linker script template + generator. Single-M7
+# view of the STM32H757 (Cube Orange+). Freestanding — no Arduino core, no CMSIS;
+# builds against @arm_gcc (see //toolchains/cc/stm32h7). No LED/GPIO driver is
+# provided (the benchmark firmware doesn't need one), so there's no dependency on
+# //libs/board:board_hdr and no board.h here.
+package(default_visibility = ["//visibility:public"])
+
+# Board-support code linked into every stm32h7 app. `alwayslink` keeps the vector
+# table + Reset_Handler (only reachable from the reset vector, so --gc-sections /
+# the linker would otherwise drop them).
+cc_library(
+    name = "support",
+    srcs = ["startup_stm32h7.c"],
+    alwayslink = True,
+    target_compatible_with = ["//platforms:stm32h7_board"],
+)
+
+# Linker script template — the memory sizes are stamped per part by
+# `stm32h7_linker_script` (stm32h7.bzl); an app links the generated `.ld` via
+# `additional_linker_inputs` + a `-T $(location ...)` linkopt (see
+# //apps/hello_stm32h7).
+exports_files(["stm32h7.ld.tpl"])

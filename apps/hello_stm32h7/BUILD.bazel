@@ -1,0 +1,43 @@
+# Bare-metal "hello" bring-up for the STM32H757 (Cortex-M7). One stm32h7-only
+# cc_binary; firmware_binary retargets it to the `stm32h7` board and packages the
+# raw Flash .bin. The concrete part shows up in the linker memory map
+# (stm32h7_linker_script -> H757 sizes) and the pyOCD flash target.
+#
+# Freestanding: links the board's own startup (FPU enable + vector table) +
+# generated linker script (//libs/board/stm32h7) and the pure-Cortex-M semihosting
+# library (//libs/semihost) instead of an Arduino core, so the link needs the
+# script wired in via linkopts + additional_linker_inputs.
+load("//libs/board/stm32h7:stm32h7.bzl", "STM32H7_VARIANTS", "stm32h7_linker_script")
+load("//rules:firmware.bzl", "firmware_binary")
+
+package(default_visibility = ["//visibility:public"])
+
+_H757 = STM32H7_VARIANTS["stm32h757"]
+
+# STM32H757 memory map (2MB Flash / 512K D1 AXI-SRAM).
+stm32h7_linker_script(
+    name = "ld",
+    flash_k = _H757.flash_k,
+    ram_k = _H757.ram_k,
+)
+
+cc_binary(
+    name = "hello",
+    srcs = ["hello.c"],
+    additional_linker_inputs = [":ld"],
+    # `-T <script>` selects the H757 memory map; the rest of the bare-metal link
+    # flags (-nostartfiles, nano/nosys specs, --gc-sections, hard-float) come from
+    # the stm32h7 cc_toolchain.
+    linkopts = [
+        "-T$(location :ld)",
+        "-Wl,-Map=hello.map",
+    ],
+    # Only built via firmware_binary's transition; skipped off the stm32h7 platform.
+    target_compatible_with = ["//platforms:stm32h7_board"],
+    deps = [
+        "//libs/board/stm32h7:support",
+        "//libs/semihost:semihost",
+    ],
+)
+
+firmware_binary(name = "stm32h757", binary = ":hello", board = "stm32h7")  # -> stm32h757.bin
