@@ -79,6 +79,7 @@ py_test(
 # Everything pyocd_main.py needs except packs; pyocd_binary (defs.bzl) adds those.
 py_library(
     name = "pyocd_runtime",
+    srcs = ["pyocd_main.py"],
     imports = ["."],
     deps = [
         ":cmsis_pack_inject",
@@ -87,8 +88,6 @@ py_library(
         "@pypi//pyocd",
     ],
 )
-
-exports_files(["pyocd_main.py"])
 
 # This repo's pyOCD, with the packs vendored in packs.lock (the @cmsis_packs hub).
 pyocd_binary(
@@ -118,5 +117,14 @@ py_binary(
 )
 
 # Orchestrator for the pyocd_debug rule (//rules:flash.bzl): starts
-# `pyocd gdbserver` + launches GDB attached. Exported for the caller's package.
-exports_files(["pyocd_debug_main.py"])
+# `pyocd gdbserver` + launches GDB attached.
+py_library(
+    name = "pyocd_debug_lib",
+    srcs = ["pyocd_debug_main.py"],
+    imports = ["."],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//rules/sim:gdb_launch",
+        "@rules_python//python/runfiles",
+    ],
+)

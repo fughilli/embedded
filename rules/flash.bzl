@@ -11,8 +11,8 @@ the artifacts. Extra CLI args pass through, e.g.:
 CMSIS-DAP / ST-Link probe (pyocd gdbserver + arm-none-eabi-gdb).
 """
 
-load("@rules_python//python:defs.bzl", "py_binary")
 load("//rules:firmware.bzl", "debug_elf")
+load("//tools/pyocd:defs.bzl", "py_entry_binary")
 
 # Canonical Bazel Bash runfiles library initializer (v3).
 _RUNFILES_INIT = r'''#!/usr/bin/env bash
@@ -220,10 +220,9 @@ def pyocd_debug(name, firmware, target, flash = True, frequency = "", pyocd = No
         args.append("--load")
     if frequency:
         args.append("--frequency=%s" % frequency)
-    py_binary(
+    py_entry_binary(
         name = name,
-        srcs = [Label("//tools/pyocd:pyocd_debug_main.py")],
-        main = Label("//tools/pyocd:pyocd_debug_main.py"),
+        module = "pyocd_debug_main",
         args = args,
         data = [
             ":" + name + "_elf",
@@ -231,10 +230,7 @@ def pyocd_debug(name, firmware, target, flash = True, frequency = "", pyocd = No
             Label("@arm_gcc//:all"),
             pyocd,
         ],
-        deps = [
-            Label("//rules/sim:gdb_launch"),
-            Label("@rules_python//python/runfiles"),
-        ],
+        deps = [Label("//tools/pyocd:pyocd_debug_lib")],
         tags = ["manual"],  # a bazel-run hardware tool, not built by //...
         **kwargs
     )
