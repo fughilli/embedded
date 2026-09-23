@@ -8,6 +8,7 @@ via the ``pyocd_flash`` rule in //rules:flash.bzl.
 import sys
 
 import cmsis_pack_inject
+import elaphurelink_probe
 import nix_backend
 
 
@@ -16,6 +17,8 @@ def main():
     # Make vendored CMSIS packs (e.g. the STM32G0 DFP) available to pack-aware
     # subcommands, so pack-provided --targets are recognized out of the box.
     sys.argv[1:] = cmsis_pack_inject.inject_pack_args(sys.argv[1:])
+    # Network CMSIS-DAP probes (wireless ESP32 DAP): `--uid elaphurelink:<host>`.
+    elaphurelink_probe.register()
     from pyocd.__main__ import main as pyocd_main
 
     return pyocd_main()

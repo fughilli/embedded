@@ -1,4 +1,4 @@
-"""Generate tools/pyocd/packs.lock from tools/pyocd/packs.in.
+"""Generate a CMSIS pack lock (default tools/pyocd/packs.lock) from its packs.in.
 
 For each pyOCD target, resolve the CMSIS Device Family Pack that provides it
 (vendor / pack / version) via cmsis-pack-manager's index — the same index pyOCD's
@@ -7,9 +7,17 @@ download it, and record the sha256. The result is a JSON lock the `cmsis_packs`
 module extension (//rules:cmsis_pack.bzl) turns into one repo per pack.
 
 Run:  bazel run //tools/pyocd:update_packs
-This writes the lock back into the source tree ($BUILD_WORKSPACE_DIRECTORY).
+This writes the lock back into the source tree ($BUILD_WORKSPACE_DIRECTORY). Another
+module keeps its own pair of files (paths relative to its workspace root):
+  bazel run @firmware//tools/pyocd:update_packs -- --packs-in X/packs.in --lock X/packs.lock
+
+keil.com rate-limits (HTTP 403) after a few full descriptor downloads. To reuse
+an existing cmsis-pack-manager cache instead, e.g. the one `pyocd pack find`
+fills (macOS: ~/Library/Application Support/cmsis-pack-manager):
+  bazel run //tools/pyocd:update_packs -- --index-cache <dir>
 """
 
+import argparse
 import hashlib
 import json
 import os
@@ -43,6 +51,36 @@ def _find_pdsc(data_path, vendor, pack):
     return None
 
 
+# www.keil.com/pack now 403s every download (Akamai); Arm serves the same files
+# from this CDN. Record it first and keep the PDSC's own URL as a fallback.
+_KEIL_PACK_BASE = "https://www.keil.com/pack"
+_KEIL_PACK_CDN = "https://keilpack.azureedge.net/pack"
+
+
+def _candidate_urls(base, filename):
+    base = base.rstrip("/")
+    urls = [base + "/" + filename]
+    if base.replace("http://", "https://") == _KEIL_PACK_BASE:
+        urls.insert(0, _KEIL_PACK_CDN + "/" + filename)
+    return urls
+
+
+def _download(urls, dest):
+    """Fetch the first URL that works; return it."""
+    errors = []
+    for url in urls:
+        print("Downloading {} ...".format(url))
+        req = urllib.request.Request(url, headers={"User-Agent": "embedded-update-packs"})
+        try:
+            with urllib.request.urlopen(req) as resp, open(dest, "wb") as f:
+                while chunk := resp.read(1 << 20):
+                    f.write(chunk)
+            return url
+        except OSError as exc:
+            errors.append("{}: {}".format(url, exc))
+    raise SystemExit("could not download pack:\n  " + "\n  ".join(errors))
+
+
 def _sha256(path):
     h = hashlib.sha256()
     with open(path, "rb") as f:
@@ -55,16 +93,32 @@ def main():
     workspace = os.environ.get("BUILD_WORKSPACE_DIRECTORY")
     if not workspace:
         raise SystemExit("run via `bazel run //tools/pyocd:update_packs`")
-    here = os.path.join(workspace, "tools", "pyocd")
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--packs-in", default="tools/pyocd/packs.in",
+                    help="target list, relative to the workspace root")
+    ap.add_argument("--lock", default="tools/pyocd/packs.lock",
+                    help="lock file to write, relative to the workspace root")
+    ap.add_argument("--index-cache", metavar="DIR",
+                    help="existing cmsis-pack-manager cache (index.json + PDSCs) to use "
+                         "instead of downloading the descriptor set")
+    args = ap.parse_args()
 
-    with open(os.path.join(here, "packs.in")) as f:
+    with open(os.path.join(workspace, args.packs_in)) as f:
         targets = [ln.strip() for ln in f if ln.strip() and not ln.startswith("#")]
 
     work = tempfile.mkdtemp(prefix="cmsis-packs-")
-    print("Resolving {} target(s) via the CMSIS index (this downloads the pack "
-          "descriptor set; may take a few minutes)...".format(len(targets)))
-    cache = Cache(True, True, json_path=work, data_path=work)
-    cache.cache_descriptors()
+    if args.index_cache:
+        index_dir = os.path.expanduser(args.index_cache)
+        if not os.path.exists(os.path.join(index_dir, "index.json")):
+            raise SystemExit("no index.json in {}".format(index_dir))
+        print("Resolving {} target(s) via the cached CMSIS index in {}...".format(len(targets), index_dir))
+        cache = Cache(True, True, json_path=index_dir, data_path=index_dir)
+    else:
+        index_dir = work
+        print("Resolving {} target(s) via the CMSIS index (this downloads the pack "
+              "descriptor set; may take a few minutes)...".format(len(targets)))
+        cache = Cache(True, True, json_path=work, data_path=work)
+        cache.cache_descriptors()
     index = cache.index
     lower = {name.lower(): name for name in index}
 
@@ -87,23 +141,22 @@ def main():
 
     for entry in packs.values():
         vendor, pack, version = entry["vendor"], entry["pack"], entry["version"]
-        pdsc = _find_pdsc(work, vendor, pack)
+        pdsc = _find_pdsc(index_dir, vendor, pack)
         if not pdsc:
             raise SystemExit("PDSC for {}.{} not found in cache".format(vendor, pack))
         with open(pdsc, encoding="utf-8", errors="replace") as f:
             base = _pack_base_url(f.read())
         filename = "{}.{}.{}.pack".format(vendor, pack, version)
-        url = base.rstrip("/") + "/" + filename
+        urls = _candidate_urls(base, filename)
         dest = os.path.join(work, filename)
-        print("Downloading {} ...".format(url))
-        urllib.request.urlretrieve(url, dest)
-        entry["url"] = url
+        _download(urls, dest)
+        entry["urls"] = urls
         entry["filename"] = filename
         entry["sha256"] = _sha256(dest)
         entry["targets"] = sorted(entry["targets"])
 
     lock = {"packs": sorted(packs.values(), key=lambda e: e["slug"])}
-    out = os.path.join(here, "packs.lock")
+    out = os.path.join(workspace, args.lock)
     with open(out, "w") as f:
         json.dump(lock, f, indent=2)
         f.write("\n")

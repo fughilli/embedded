@@ -13,6 +13,14 @@ rules_python turns a requirements lock into per-wheel repos + a hub:
 
 The lock is JSON so both the generator (Python) and this extension
 (`json.decode`) read it. Regenerate: `bazel run //tools/pyocd:update_packs`.
+
+Other modules can vendor their own packs: give their `parse` tag a distinct
+`hub_name`, then build a pyOCD binary that carries that hub with
+`pyocd_binary` (//tools/pyocd:defs.bzl):
+
+    cmsis = use_extension("@firmware//rules:cmsis_pack.bzl", "cmsis_packs")
+    cmsis.parse(lock = "//tools/pyocd:packs.lock", hub_name = "my_packs")
+    use_repo(cmsis, "my_packs")
 """
 
 # --- one repo per pack: download the .pack, pinned by sha256 -----------------
@@ -78,10 +86,13 @@ def _cmsis_impl(mctx):
             lock = json.decode(mctx.read(parse.lock))
             pack_labels = []
             for pack in lock["packs"]:
-                repo = "cmsis_pack_" + pack["slug"]
+                # Scope pack repos by hub so two modules can lock the same pack.
+                prefix = "" if parse.hub_name == "cmsis_packs" else parse.hub_name + "_"
+                repo = "cmsis_pack_" + prefix + pack["slug"]
                 cmsis_pack_repo(
                     name = repo,
-                    urls = [pack["url"]],
+                    # "urls" (mirrors, tried in order); older locks have one "url".
+                    urls = pack["urls"] if "urls" in pack else [pack["url"]],
                     sha256 = pack["sha256"],
                     filename = pack["filename"],
                 )

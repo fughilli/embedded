@@ -8,7 +8,10 @@
       "targets": [
         "stm32g0b1rctx"
       ],
-      "url": "https://www.keil.com/pack/Keil.STM32G0xx_DFP.2.1.0.pack",
+      "urls": [
+        "https://keilpack.azureedge.net/pack/Keil.STM32G0xx_DFP.2.1.0.pack",
+        "https://www.keil.com/pack/Keil.STM32G0xx_DFP.2.1.0.pack"
+      ],
       "filename": "Keil.STM32G0xx_DFP.2.1.0.pack",
       "sha256": "3076c0f9a6a9a99f7a2325a2e519bed0ac3a3c1db3553748ceeb5b0676645889"
     }

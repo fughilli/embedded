@@ -29,6 +29,7 @@ in its linker memory map and pyOCD target — the demo builds for the **STM32G0B
 | `libs/board/stm32g0/` | Bare-metal STM32G0 family support: startup (vectors + reset), linker-script template + per-part generator (`stm32g0.bzl`), GPIO LED |
 | `apps/blink_stm32g0b1/` | Freestanding STM32G0B1 blink (no Arduino; `main()` entry) |
 | `tools/pyocd/` | pyOCD flash driver — pip-vendored (rules_python) with libusb substituted from Nix |
+| `tools/swd_bridge/` | Raspberry Pi 5 GPIO bit-bang SWD served as a network CMSIS-DAP probe (elaphureLink) for pyOCD |
 | `rules/embedded.bzl` | `embedded_binary` rule: platform transition wrapping a cc_binary |
 | `rules/firmware.bzl` | `firmware_binary` rule: transition + package a cc_binary → board `.uf2`/`.bin` |
 | `rules/arduino_library.bzl` | Repo rule: fetch a library `.zip`, code-generate its BUILD (FastLED uses it) |
@@ -108,6 +109,26 @@ editing `tools/pyocd/requirements.in` with `bazel run
 access) is present — reaching that libusb enumeration is itself proof the Nix
 libusb is wired in.
 
+#### Network probes (elaphureLink)
+
+`//tools/pyocd` also registers an `elaphurelink` probe type: CMSIS-DAP over TCP
+(port 3240), as served by the wireless ESP32 DAP
+([wireless-esp32-tools](https://github.com/kerms/wireless-esp32-tools)). Its
+other transport, USB/IP, has no client on macOS. Address it explicitly, or list
+it by adding hosts:
+
+```sh
+bazel run //tools/pyocd -- commander -u elaphurelink:<host> -t <target>
+bazel run //tools/pyocd -- list -O elaphurelink.hosts=<host>[,<host>...]
+bazel test //tools/pyocd:elaphurelink_probe_test   # fake probe server, no HW
+```
+
+The same `--uid elaphurelink:<host>[:port]` works as passthrough for
+`pyocd_flash` and `pyocd_debug` targets.
+
+A Raspberry Pi 5 can serve the same protocol by bit-banging SWD on its header GPIOs
+(`tools/swd_bridge`, see its README).
+
 #### CMSIS Device Family Packs (`--target` support)
 
 A pyOCD `--target` outside pyOCD's built-ins (e.g. `stm32g0b1rctx`) lives in a
@@ -117,14 +138,27 @@ lockfile flow (`rules/cmsis_pack.bzl`):
 - `tools/pyocd/packs.in` — pyOCD targets to support, one per line.
 - `tools/pyocd/packs.lock` — generated JSON: each pack's URL + sha256, resolved
   from `packs.in` via the CMSIS index. Regenerate with
-  `bazel run //tools/pyocd:update_packs`.
+  `bazel run //tools/pyocd:update_packs`. keil.com rate-limits (HTTP 403) after
+  a few full index downloads; add `-- --index-cache <dir>` to reuse an existing
+  cmsis-pack-manager cache (e.g. the one `pyocd pack find` fills, on macOS
+  `~/Library/Application Support/cmsis-pack-manager`). Packs are fetched from
+  Arm's `keilpack.azureedge.net` CDN, with keil.com as a fallback URL.
 - The `cmsis_packs` module extension turns the lock into **one downloaded repo
   per pack** plus a `@cmsis_packs` hub; `//tools/pyocd` stages them as runfiles
   and auto-passes `--pack` to pack-aware subcommands. So `stm32g0b1rctx` is
   recognized out of the box — no `pyocd pack install`, no `~/.cache` state.
+  Currently vendored: `stm32g0b1rctx`.
 
 Add a target: append it to `packs.in`, run `update_packs`, commit the updated
-`packs.lock`. Verify (needs no hardware):
+`packs.lock`.
+
+Other modules vendor their own targets the same way. They keep their own
+`packs.in`/`packs.lock` and lock them with
+`bazel run @firmware//tools/pyocd:update_packs -- --packs-in <dir>/packs.in --lock <dir>/packs.lock`.
+They instantiate a hub with a distinct `hub_name` through `@firmware//rules:cmsis_pack.bzl`,
+and build their own pyOCD with `pyocd_binary(name, packs = ["@<hub>//:all_packs"])`
+from `@firmware//tools/pyocd:defs.bzl`. `pyocd_flash`/`pyocd_debug` take that binary
+as `pyocd`. Verify (needs no hardware):
 `bazel run //tools/pyocd -- list --targets --source pack | grep <target>`.
 
 ## Rust ↔ C/C++ interop
