@@ -6,8 +6,9 @@
 # pyusb by the `nix_libusb` wrapper below. Use //tools/pyocd:pyocd directly
 # (`bazel run //tools/pyocd -- list`) or the `pyocd_flash` rule for flash targets
 # that lack built-in DFU (e.g. the STM32G0B1).
-load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 load("@rules_uv//uv:pip.bzl", "pip_compile")
+load(":defs.bzl", "pyocd_binary")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -48,25 +49,51 @@ py_library(
     deps = ["@pypi//pyusb"],
 )
 
-# Vendored CMSIS Device Family Packs (from packs.lock via the cmsis_packs
-# extension), passed to pack-aware pyocd subcommands by cmsis_pack_inject.
+# Passes every CMSIS pack staged in a pyOCD binary's runfiles (from any cmsis_packs
+# hub) to pack-aware pyocd subcommands.
 py_library(
-    name = "cmsis_packs",
+    name = "cmsis_pack_inject",
     srcs = ["cmsis_pack_inject.py"],
-    data = ["@cmsis_packs//:all_packs"],
     imports = ["."],
 )
 
-py_binary(
-    name = "pyocd",
-    srcs = ["pyocd_main.py"],
+# CMSIS-DAP over elaphureLink TCP, for network probes such as the wireless
+# ESP32 DAP (github.com/kerms/wireless-esp32-tools). Probe ID:
+# `elaphurelink:<host>[:port]`; see elaphurelink_probe.py.
+py_library(
+    name = "elaphurelink_probe",
+    srcs = ["elaphurelink_probe.py"],
     imports = ["."],
-    main = "pyocd_main.py",
+    deps = ["@pypi//pyocd"],
+)
+
+# Hardware-free: pyOCD's CMSIS-DAP stack against a fake elaphureLink server.
+#   bazel test //tools/pyocd:elaphurelink_probe_test
+py_test(
+    name = "elaphurelink_probe_test",
+    size = "small",
+    srcs = ["elaphurelink_probe_test.py"],
+    deps = [":elaphurelink_probe"],
+)
+
+# Everything pyocd_main.py needs except packs; pyocd_binary (defs.bzl) adds those.
+py_library(
+    name = "pyocd_runtime",
+    imports = ["."],
     deps = [
-        ":cmsis_packs",
+        ":cmsis_pack_inject",
+        ":elaphurelink_probe",
         ":nix_libusb",
         "@pypi//pyocd",
     ],
+)
+
+exports_files(["pyocd_main.py"])
+
+# This repo's pyOCD, with the packs vendored in packs.lock (the @cmsis_packs hub).
+pyocd_binary(
+    name = "pyocd",
+    packs = ["@cmsis_packs//:all_packs"],
 )
 
 # Resolve packs.in -> packs.lock (CMSIS index lookup + download + hash).

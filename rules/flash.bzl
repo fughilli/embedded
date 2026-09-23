@@ -135,7 +135,7 @@ def _pyocd_flash_impl(ctx):
     # The ELF (addresses embedded) is the cleanest input for pyOCD's loader; take
     # it from the firmware_binary `elf` output group rather than the raw .bin.
     elf = ctx.attr.firmware[OutputGroupInfo].elf.to_list()[0]
-    tool = ctx.executable._pyocd
+    tool = ctx.executable.pyocd
 
     # --format elf: the `elf` output group is a symlink to the extension-less
     # cc_binary, and pyOCD infers format from the resolved path's extension —
@@ -150,7 +150,7 @@ def _pyocd_flash_impl(ctx):
     ctx.actions.write(out, _RUNFILES_INIT + "exec " + " ".join(argv) + "\n", is_executable = True)
 
     runfiles = ctx.runfiles(files = [elf])
-    runfiles = runfiles.merge(ctx.attr._pyocd[DefaultInfo].default_runfiles)
+    runfiles = runfiles.merge(ctx.attr.pyocd[DefaultInfo].default_runfiles)
     runfiles = runfiles.merge(ctx.attr._bash_runfiles[DefaultInfo].default_runfiles)
     return [DefaultInfo(executable = out, runfiles = runfiles)]
 
@@ -175,10 +175,11 @@ pyocd_flash = rule(
             default = "",
             doc = "Optional SWD/JTAG clock in Hz (e.g. `4000000`).",
         ),
-        "_pyocd": attr.label(
+        "pyocd": attr.label(
             default = "//tools/pyocd:pyocd",
             executable = True,
             cfg = "exec",
+            doc = "pyOCD binary; override with a pyocd_binary carrying your own packs.",
         ),
         "_bash_runfiles": attr.label(default = "@bazel_tools//tools/bash/runfiles"),
     },
@@ -187,12 +188,13 @@ pyocd_flash = rule(
 # ---------------------------------------------------------------------------
 # pyocd_debug — interactive GDB on a real target via pyOCD + arm-none-eabi-gdb
 # ---------------------------------------------------------------------------
-def pyocd_debug(name, firmware, target, flash = True, frequency = "", **kwargs):
+def pyocd_debug(name, firmware, target, flash = True, frequency = "", pyocd = None, **kwargs):
     """An interactive GDB session on a connected target over a debug probe.
 
     `firmware` is a firmware_binary (its `elf` output group is loaded for symbols
     and, unless `flash = False`, flashed). `flash = False` attaches to and debugs
     an already-running target. `target` is the pyOCD target type (e.g. stm32g0b1xx).
+    `pyocd` overrides the pyOCD binary (a pyocd_binary carrying your own packs).
 
         bazel run //apps/blink_stm32g0b1:debug            # load + debug
         bazel run //apps/blink_stm32g0b1:debug -- --probe <uid>
@@ -205,11 +207,14 @@ def pyocd_debug(name, firmware, target, flash = True, frequency = "", **kwargs):
         tags = ["manual"],
         visibility = ["//visibility:private"],
     )
+    # Label() so the macro's own labels resolve in this repo when called from another.
+    pyocd = pyocd or Label("//tools/pyocd:pyocd")
+    gdb = Label("@arm_gcc//:gdb")
     args = [
         "--elf=$(rlocationpath :%s_elf)" % name,
         "--target=%s" % target,
-        "--gdb=$(rlocationpath @arm_gcc//:gdb)",
-        "--pyocd=$(rlocationpath //tools/pyocd:pyocd)",
+        "--gdb=$(rlocationpath %s)" % gdb,
+        "--pyocd=$(rlocationpath %s)" % pyocd,
     ]
     if flash:
         args.append("--load")
@@ -217,18 +222,18 @@ def pyocd_debug(name, firmware, target, flash = True, frequency = "", **kwargs):
         args.append("--frequency=%s" % frequency)
     py_binary(
         name = name,
-        srcs = ["//tools/pyocd:pyocd_debug_main.py"],
-        main = "//tools/pyocd:pyocd_debug_main.py",
+        srcs = [Label("//tools/pyocd:pyocd_debug_main.py")],
+        main = Label("//tools/pyocd:pyocd_debug_main.py"),
         args = args,
         data = [
             ":" + name + "_elf",
-            "@arm_gcc//:gdb",
-            "@arm_gcc//:all",
-            "//tools/pyocd:pyocd",
+            gdb,
+            Label("@arm_gcc//:all"),
+            pyocd,
         ],
         deps = [
-            "//rules/sim:gdb_launch",
-            "@rules_python//python/runfiles",
+            Label("//rules/sim:gdb_launch"),
+            Label("@rules_python//python/runfiles"),
         ],
         tags = ["manual"],  # a bazel-run hardware tool, not built by //...
         **kwargs

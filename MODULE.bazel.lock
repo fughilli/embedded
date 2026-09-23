@@ -182,10 +182,10 @@
   "moduleExtensions": {
     "//rules:cmsis_pack.bzl%cmsis_packs": {
       "general": {
-        "bzlTransitiveDigest": "qZ2kDv3Z2yanNqW0565ZCSni/+XecdE8S++z4F/l8Uc=",
+        "bzlTransitiveDigest": "JolM9AQ5na1zK9l5y7Rp7f9a/xODzZikvXzkN1B63QE=",
         "usagesDigest": "l7Wk3OotcKo2KRtzASZWiNdsmRhgAvhbDA2ZP9HvmEk=",
         "recordedFileInputs": {
-          "@@//tools/pyocd/packs.lock": "41f82eb0ae93ef31e6db8a0cda8e37cf629b99cf3281338a972878afcb75c190"
+          "@@//tools/pyocd/packs.lock": "38b412906205ce1c4b09c3f21c08e5113866352e387c4d6a578e5a968c47ebaf"
         },
         "recordedDirentsInputs": {},
         "envVariables": {},
@@ -195,6 +195,7 @@
             "ruleClassName": "cmsis_pack_repo",
             "attributes": {
               "urls": [
+                "https://keilpack.azureedge.net/pack/Keil.STM32G0xx_DFP.2.1.0.pack",
                 "https://www.keil.com/pack/Keil.STM32G0xx_DFP.2.1.0.pack"
               ],
               "sha256": "3076c0f9a6a9a99f7a2325a2e519bed0ac3a3c1db3553748ceeb5b0676645889",

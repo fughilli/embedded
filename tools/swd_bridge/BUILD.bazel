@@ -1,0 +1,7 @@
+# Sources for building swd_bridge on the Raspberry Pi itself (Makefile/default.nix),
+# e.g. shipped to a Pi by a deploy rule. Not built by Bazel: it targets aarch64 Linux.
+filegroup(
+    name = "sources",
+    srcs = glob(["**"], exclude = ["BUILD.bazel", "swd_bridge"]),
+    visibility = ["//visibility:public"],
+)
