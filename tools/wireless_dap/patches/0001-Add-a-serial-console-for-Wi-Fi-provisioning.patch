@@ -1,0 +1,351 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Kevin Balke <fughilli@gmail.com>
+Date: Tue, 22 Sep 2026 19:55:05 -0700
+Subject: [PATCH 1/3] Add a serial console for Wi-Fi provisioning
+
+esp_console REPL on the console UART: wifi_connect, wifi_set, wifi_mode,
+wifi_status (JSON), restart. Every command ends in one @OK/@ERR line so a
+host tool (tools/wireless_dap/dap_wifi.py in embedded) can drive it.
+---
+ main/main.c                                  |   3 +
+ project_components/wt_console/CMakeLists.txt |   7 +
+ project_components/wt_console/wt_console.c   | 274 +++++++++++++++++++
+ project_components/wt_console/wt_console.h   |  12 +
+ 4 files changed, 296 insertions(+)
+ create mode 100644 project_components/wt_console/CMakeLists.txt
+ create mode 100644 project_components/wt_console/wt_console.c
+ create mode 100644 project_components/wt_console/wt_console.h
+
+diff --git a/main/main.c b/main/main.c
+index 5626945..465ff60 100644
+--- a/main/main.c
++++ b/main/main.c
+@@ -14,6 +14,7 @@
+ #include "request_runner.h"
+ #include "uart_tcp_bridge.h"
+ #include "global_module.h"
++#include "wt_console.h"
+ 
+ #include <assert.h>
+ 
+@@ -39,4 +40,6 @@ void app_main()
+     xTaskCreate(DAP_Thread, "DAP_Task", 2048, NULL, 10, NULL);
+ 
+ 	xTaskCreate(uart_bridge_task, "uart_server", 4096, NULL, 2, NULL);
++
++	wt_console_init();
+ }
+diff --git a/project_components/wt_console/CMakeLists.txt b/project_components/wt_console/CMakeLists.txt
+new file mode 100644
+index 0000000..3e1d418
+--- /dev/null
++++ b/project_components/wt_console/CMakeLists.txt
+@@ -0,0 +1,7 @@
++file(GLOB SOURCES *.c)
++
++idf_component_register(
++        SRCS ${SOURCES}
++        INCLUDE_DIRS "."
++        PRIV_REQUIRES console esp_wifi esp_netif wifi_manager
++)
+diff --git a/project_components/wt_console/wt_console.c b/project_components/wt_console/wt_console.c
+new file mode 100644
+index 0000000..59367ff
+--- /dev/null
++++ b/project_components/wt_console/wt_console.c
+@@ -0,0 +1,274 @@
++#include "wt_console.h"
++#include "wifi_manager.h"
++#include "wifi_storage.h"
++
++#include <esp_console.h>
++#include <esp_err.h>
++#include <esp_log.h>
++#include <esp_mac.h>
++#include <esp_netif.h>
++#include <esp_system.h>
++#include <esp_wifi.h>
++#include <argtable3/argtable3.h>
++#include <freertos/FreeRTOS.h>
++#include <freertos/task.h>
++
++#include <stdio.h>
++#include <string.h>
++
++#define TAG __FILENAME__
++
++#define RESULT_OK(fmt, ...)  printf("@OK " fmt "\n", ##__VA_ARGS__)
++#define RESULT_ERR(fmt, ...) printf("@ERR " fmt "\n", ##__VA_ARGS__)
++
++static struct {
++	struct arg_str *ssid;
++	struct arg_str *password;
++	struct arg_end *end;
++} cred_args;
++
++static struct {
++	struct arg_str *mode;
++	struct arg_end *end;
++} mode_args;
++
++static const struct {
++	const char *name;
++	wifi_apsta_mode_e mode;
++} mode_names[] = {
++	{"auto",  WIFI_AP_AUTO_STA_ON}, /* AP only while STA is disconnected */
++	{"sta",   WIFI_AP_OFF_STA_ON},
++	{"ap",    WIFI_AP_ON_STA_OFF},
++	{"apsta", WIFI_AP_STA_ON},
++};
++
++static const char *mode_to_name(wifi_apsta_mode_e mode)
++{
++	for (int i = 0; i < sizeof(mode_names) / sizeof(mode_names[0]); ++i) {
++		if (mode_names[i].mode == mode) {
++			return mode_names[i].name;
++		}
++	}
++	return "unknown";
++}
++
++static void print_json_str(const char *s)
++{
++	putchar('"');
++	for (; *s; ++s) {
++		unsigned char c = *s;
++		if (c == '"' || c == '\\') {
++			printf("\\%c", c);
++		} else if (c < 0x20) {
++			printf("\\u%04x", c);
++		} else {
++			putchar(c);
++		}
++	}
++	putchar('"');
++}
++
++/* parse ssid/password args into zero padded credential, as wifi_manager copies full buffers */
++static int parse_cred(int argc, char **argv, wifi_credential_t *cred)
++{
++	if (arg_parse(argc, argv, (void **)&cred_args) != 0) {
++		arg_print_errors(stdout, cred_args.end, argv[0]);
++		RESULT_ERR("bad arguments");
++		return 1;
++	}
++
++	const char *ssid = cred_args.ssid->sval[0];
++	const char *password = cred_args.password->count ? cred_args.password->sval[0] : "";
++	size_t pass_len = strlen(password);
++	if (strlen(ssid) == 0 || strlen(ssid) > 32) {
++		RESULT_ERR("ssid must be 1-32 bytes");
++		return 1;
++	}
++	if (pass_len > 63 || (pass_len > 0 && pass_len < 8)) {
++		RESULT_ERR("password must be empty or 8-63 bytes");
++		return 1;
++	}
++
++	memset(cred, 0, sizeof(*cred));
++	memcpy(cred->ssid, ssid, strlen(ssid));
++	memcpy(cred->password, password, pass_len);
++	return 0;
++}
++
++static int cmd_wifi_set(int argc, char **argv)
++{
++	wifi_credential_t cred;
++	if (parse_cred(argc, argv, &cred)) {
++		return 1;
++	}
++
++	int err = wifi_data_save_sta_ap_credential(&cred);
++	if (err) {
++		RESULT_ERR("nvs save: %s", esp_err_to_name(err));
++		return 1;
++	}
++	RESULT_OK("saved, restart to apply");
++	return 0;
++}
++
++static int cmd_wifi_connect(int argc, char **argv)
++{
++	wifi_credential_t cred;
++	if (parse_cred(argc, argv, &cred)) {
++		return 1;
++	}
++
++	/* saves credential to nvs on success */
++	if (wifi_manager_connect(cred.ssid, cred.password)) {
++		RESULT_ERR("connect failed");
++		return 1;
++	}
++
++	esp_netif_ip_info_t ip_info;
++	esp_netif_get_ip_info(wifi_manager_get_sta_netif(), &ip_info);
++	RESULT_OK("connected " IPSTR, IP2STR(&ip_info.ip));
++	return 0;
++}
++
++static int cmd_wifi_mode(int argc, char **argv)
++{
++	if (arg_parse(argc, argv, (void **)&mode_args) != 0) {
++		arg_print_errors(stdout, mode_args.end, argv[0]);
++		RESULT_ERR("bad arguments");
++		return 1;
++	}
++
++	const char *name = mode_args.mode->sval[0];
++	for (int i = 0; i < sizeof(mode_names) / sizeof(mode_names[0]); ++i) {
++		if (strcmp(mode_names[i].name, name) == 0) {
++			if (wifi_manager_change_mode(mode_names[i].mode)) {
++				RESULT_ERR("set mode failed");
++				return 1;
++			}
++			RESULT_OK("mode %s", name);
++			return 0;
++		}
++	}
++	RESULT_ERR("unknown mode '%s'", name);
++	return 1;
++}
++
++static int cmd_wifi_status(int argc, char **argv)
++{
++	wifi_apsta_mode_e mode;
++	wifi_mode_t status;
++	wifi_manager_get_mode(&mode, &status);
++
++	wifi_credential_t saved;
++	int has_saved = wifi_data_get_sta_last_conn_cred(&saved) == 0;
++
++	wifi_ap_record_t ap_record;
++	int connected = esp_wifi_sta_get_ap_info(&ap_record) == ESP_OK;
++
++	esp_netif_ip_info_t sta_ip;
++	esp_netif_get_ip_info(wifi_manager_get_sta_netif(), &sta_ip);
++	esp_netif_ip_info_t ap_ip;
++	esp_netif_get_ip_info(wifi_manager_get_ap_netif(), &ap_ip);
++
++	uint8_t mac[6];
++	esp_wifi_get_mac(WIFI_IF_STA, mac);
++
++	printf("@OK {\"mode\":\"%s\",\"ap_active\":%s,\"sta_active\":%s",
++	       mode_to_name(mode),
++	       (status & WIFI_MODE_AP) ? "true" : "false",
++	       (status & WIFI_MODE_STA) ? "true" : "false");
++	printf(",\"sta_mac\":\"" MACSTR "\"", MAC2STR(mac));
++	printf(",\"saved_ssid\":");
++	if (has_saved) {
++		char ssid[33] = {0};
++		memcpy(ssid, saved.ssid, 32);
++		print_json_str(ssid);
++	} else {
++		printf("null");
++	}
++	printf(",\"connected\":%s", connected ? "true" : "false");
++	if (connected) {
++		printf(",\"ssid\":");
++		print_json_str((char *)ap_record.ssid);
++		printf(",\"rssi\":%d,\"ip\":\"" IPSTR "\",\"gateway\":\"" IPSTR "\",\"netmask\":\"" IPSTR "\"",
++		       ap_record.rssi, IP2STR(&sta_ip.ip), IP2STR(&sta_ip.gw), IP2STR(&sta_ip.netmask));
++	}
++	if (status & WIFI_MODE_AP) {
++		printf(",\"ap_ip\":\"" IPSTR "\"", IP2STR(&ap_ip.ip));
++	}
++	printf("}\n");
++	return 0;
++}
++
++static int cmd_restart(int argc, char **argv)
++{
++	RESULT_OK("restarting");
++	fflush(stdout);
++	vTaskDelay(pdMS_TO_TICKS(100));
++	esp_restart();
++	return 0;
++}
++
++void wt_console_init(void)
++{
++	esp_console_repl_t *repl = NULL;
++	esp_console_repl_config_t repl_config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
++	repl_config.prompt = "dap>";
++
++	cred_args.ssid = arg_str1(NULL, NULL, "<ssid>", "network name");
++	cred_args.password = arg_str0(NULL, NULL, "<password>", "passphrase, omit for open networks");
++	cred_args.end = arg_end(2);
++
++	mode_args.mode = arg_str1(NULL, NULL, "<auto|sta|ap|apsta>",
++	                          "auto: AP only while not connected to a network");
++	mode_args.end = arg_end(1);
++
++	const esp_console_cmd_t cmds[] = {
++		{
++			.command = "wifi_connect",
++			.help = "Connect to a network now, saving the credential if it succeeds",
++			.func = cmd_wifi_connect,
++			.argtable = &cred_args,
++		},
++		{
++			.command = "wifi_set",
++			.help = "Save a network credential without connecting (applied on restart)",
++			.func = cmd_wifi_set,
++			.argtable = &cred_args,
++		},
++		{
++			.command = "wifi_mode",
++			.help = "Set the persistent AP/STA mode",
++			.func = cmd_wifi_mode,
++			.argtable = &mode_args,
++		},
++		{
++			.command = "wifi_status",
++			.help = "Print wifi status as JSON",
++			.func = cmd_wifi_status,
++		},
++		{
++			.command = "restart",
++			.help = "Restart the device",
++			.func = cmd_restart,
++		},
++	};
++
++	for (int i = 0; i < sizeof(cmds) / sizeof(cmds[0]); ++i) {
++		ESP_ERROR_CHECK(esp_console_cmd_register(&cmds[i]));
++	}
++	ESP_ERROR_CHECK(esp_console_register_help_command());
++
++#if defined(CONFIG_ESP_CONSOLE_UART_DEFAULT) || defined(CONFIG_ESP_CONSOLE_UART_CUSTOM)
++	esp_console_dev_uart_config_t hw_config = ESP_CONSOLE_DEV_UART_CONFIG_DEFAULT();
++	ESP_ERROR_CHECK(esp_console_new_repl_uart(&hw_config, &repl_config, &repl));
++#elif defined(CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG)
++	esp_console_dev_usb_serial_jtag_config_t hw_config = ESP_CONSOLE_DEV_USB_SERIAL_JTAG_CONFIG_DEFAULT();
++	ESP_ERROR_CHECK(esp_console_new_repl_usb_serial_jtag(&hw_config, &repl_config, &repl));
++#else
++	ESP_LOGW(TAG, "no supported console, serial provisioning disabled");
++	return;
++#endif
++
++	ESP_ERROR_CHECK(esp_console_start_repl(repl));
++}
+diff --git a/project_components/wt_console/wt_console.h b/project_components/wt_console/wt_console.h
+new file mode 100644
+index 0000000..0079b65
+--- /dev/null
++++ b/project_components/wt_console/wt_console.h
+@@ -0,0 +1,12 @@
++#ifndef WT_CONSOLE_H_GUARD
++#define WT_CONSOLE_H_GUARD
++
++/**
++ * @brief start a serial REPL for provisioning (wifi credentials, mode, status)
++ *
++ * Every command ends with exactly one result line, prefixed with "@OK" or "@ERR",
++ * so that host tools can find it among log output.
++ */
++void wt_console_init(void);
++
++#endif //WT_CONSOLE_H_GUARD
+-- 
+2.49.0
+

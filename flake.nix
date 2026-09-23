@@ -31,6 +31,8 @@
       # can print/refresh its fixed-output hash without going through Bazel.
       packages = forAll (pkgs: {
         arduino-pico = import ./nix/arduino_pico_drv.nix pkgs;
+        # Patched wireless ESP32 DAP firmware source (tools/wireless_dap).
+        wireless-dap-src = pkgs.callPackage ./tools/wireless_dap { };
       });
     };
 }

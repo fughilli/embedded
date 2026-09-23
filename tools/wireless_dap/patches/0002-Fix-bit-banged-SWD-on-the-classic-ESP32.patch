@@ -1,0 +1,146 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Kevin Balke <fughilli@gmail.com>
+Date: Tue, 22 Sep 2026 19:55:05 -0700
+Subject: [PATCH 2/3] Fix bit-banged SWD on the classic ESP32
+
+- PIN_SWDIO_OUT_DISABLE only drove SWDIO high: the ESP32 pad is push-pull,
+  so the target could never drive ACK (every read got 0b111). Tri-state it,
+  and re-enable the output in PIN_SWDIO_OUT_ENABLE.
+- Enable the SWDIO pull-up with gpio_pullup_en(): GPIO13 is an RTC pad whose
+  pulls are not the IO_MUX FUN_PU/FUN_PD bits.
+- Release SWDIO during data-in SWD sequences (SWD_Sequence_GPIO).
+- GPIO_SET_LEVEL_HIGH/LOW: plain writes to the W1TS/W1TC strobes instead of
+  read-modify-write.
+---
+ components/DAP/CMakeLists.txt                |  1 +
+ components/DAP/DAP_config.h                  |  9 +++++++++
+ components/DAP/cmsis-dap/include/gpio_op.h   | 15 +++++++++++++--
+ components/DAP/cmsis-dap/source/SW_DP.c      |  3 +++
+ components/DAP/cmsis-dap/source/spi_switch.c | 10 ++++++++++
+ 5 files changed, 36 insertions(+), 2 deletions(-)
+
+diff --git a/components/DAP/CMakeLists.txt b/components/DAP/CMakeLists.txt
+index 8897fc7..2c90da4 100644
+--- a/components/DAP/CMakeLists.txt
++++ b/components/DAP/CMakeLists.txt
+@@ -5,4 +5,5 @@ file(GLOB SOURCES
+ idf_component_register(
+         SRCS ${SOURCES}
+         INCLUDE_DIRS "."
++        PRIV_REQUIRES driver
+ )
+diff --git a/components/DAP/DAP_config.h b/components/DAP/DAP_config.h
+index b80cad1..bd554f7 100644
+--- a/components/DAP/DAP_config.h
++++ b/components/DAP/DAP_config.h
+@@ -744,7 +744,13 @@ __STATIC_FORCEINLINE void PIN_SWDIO_OUT_ENABLE(void)
+   // set \ref gpio_set_direction -> OUTPUT
+   // GPIO.enable_w1ts |= (0x1 << PIN_SWDIO_MOSI);
+   // GPIO.pin[PIN_SWDIO_MOSI].driver = 0;
++#if defined CONFIG_IDF_TARGET_ESP32
++  // SWDIO is push-pull on esp32, so it must really be tri-stated for the
++  // target's ACK/data phase (see PIN_SWDIO_OUT_DISABLE) and re-enabled here.
++  GPIO.enable_w1ts = (0x1 << PIN_SWDIO_MOSI);
++#else
+   do {}while (0);
++#endif
+ 
+ }
+ 
+@@ -765,7 +771,10 @@ __STATIC_FORCEINLINE void PIN_SWDIO_OUT_DISABLE(void)
+ #elif defined CONFIG_IDF_TARGET_ESP32
+   // Note that the input of esp32 is not always connected.
+   PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[PIN_SWDIO_MOSI]);
++  // Release the line: unlike esp8266 the pad is push-pull, so only driving it
++  // high would override the target's ACK (every read then returns ACK=0b111).
+   GPIO.out_w1ts = (0x1 << PIN_SWDIO_MOSI);
++  GPIO.enable_w1tc = (0x1 << PIN_SWDIO_MOSI);
+ #elif defined CONFIG_IDF_TARGET_ESP32C3
+   // Note that the input of esp32c3 is not always connected.
+   PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[PIN_SWDIO_MOSI]);
+diff --git a/components/DAP/cmsis-dap/include/gpio_op.h b/components/DAP/cmsis-dap/include/gpio_op.h
+index 8572db0..39c6ff9 100644
+--- a/components/DAP/cmsis-dap/include/gpio_op.h
++++ b/components/DAP/cmsis-dap/include/gpio_op.h
+@@ -92,16 +92,27 @@ __STATIC_INLINE __UNUSED void GPIO_SET_DIRECTION_NORMAL_OUT(int io_num)
+ #endif
+ 
+ 
+-#if defined CONFIG_IDF_TARGET_ESP8266 || defined CONFIG_IDF_TARGET_ESP32
++#if defined CONFIG_IDF_TARGET_ESP8266
+ __STATIC_INLINE __UNUSED void GPIO_SET_LEVEL_HIGH(int io_num)
+ {
+   GPIO.out_w1ts |= (0x1 << io_num);
+ }
+-//FIXME: esp32
+ __STATIC_INLINE __UNUSED void GPIO_SET_LEVEL_LOW(int io_num)
+ {
+   GPIO.out_w1tc |= (0x1 << io_num);
+ }
++#elif defined CONFIG_IDF_TARGET_ESP32
++// W1TS/W1TC are write-only strobes: write the single bit, as ESP-IDF's
++// gpio_ll does. A read-modify-write can also hit whatever the read returns,
++// e.g. clearing SWCLK while clearing SWDIO.
++__STATIC_INLINE __UNUSED void GPIO_SET_LEVEL_HIGH(int io_num)
++{
++  GPIO.out_w1ts = (0x1 << io_num);
++}
++__STATIC_INLINE __UNUSED void GPIO_SET_LEVEL_LOW(int io_num)
++{
++  GPIO.out_w1tc = (0x1 << io_num);
++}
+ #elif defined CONFIG_IDF_TARGET_ESP32C3 || defined CONFIG_IDF_TARGET_ESP32S3
+ __STATIC_INLINE __UNUSED void GPIO_SET_LEVEL_HIGH(int io_num)
+ {
+diff --git a/components/DAP/cmsis-dap/source/SW_DP.c b/components/DAP/cmsis-dap/source/SW_DP.c
+index 95b6cd6..b9a045d 100644
+--- a/components/DAP/cmsis-dap/source/SW_DP.c
++++ b/components/DAP/cmsis-dap/source/SW_DP.c
+@@ -158,6 +158,8 @@ void SWD_Sequence_GPIO (uint32_t info, const uint8_t *swdo, uint8_t *swdi) {
+ 
+   // LSB
+   if (info & SWD_SEQUENCE_DIN) {
++    // Release SWDIO while the target drives it (DAP_SWD_Sequence no longer does).
++    PIN_SWDIO_OUT_DISABLE();
+     while (n) {
+       val = 0U;
+       for (k = 8U; k && n; k--, n--) {
+@@ -168,6 +170,7 @@ void SWD_Sequence_GPIO (uint32_t info, const uint8_t *swdo, uint8_t *swdi) {
+       val >>= k;
+       *swdi++ = (uint8_t)val;
+     }
++    PIN_SWDIO_OUT_ENABLE();
+   } else {
+     while (n) {
+       val = *swdo++;
+diff --git a/components/DAP/cmsis-dap/source/spi_switch.c b/components/DAP/cmsis-dap/source/spi_switch.c
+index b213e37..8282c5a 100644
+--- a/components/DAP/cmsis-dap/source/spi_switch.c
++++ b/components/DAP/cmsis-dap/source/spi_switch.c
+@@ -20,6 +20,10 @@
+ #include "cmsis-dap/include/gpio_common.h"
+ #include "DAP_config.h"
+ 
++#ifdef CONFIG_IDF_TARGET_ESP32
++#include "driver/gpio.h"
++#endif
++
+ #ifdef CONFIG_IDF_TARGET_ESP8266
+     #define DAP_SPI SPI1
+ #elif defined CONFIG_IDF_TARGET_ESP32
+@@ -491,6 +495,12 @@ __FORCEINLINE void DAP_SPI_Deinit()
+ 
+     // disable MOSI pull up
+     // REG_CLR_BIT(GPIO_PIN_MUX_REG[13], FUN_PU);
++
++    // Keep SWDIO high while released during turnaround (see PIN_SWDIO_OUT_DISABLE).
++    // GPIO13 is an RTC pad: its pulls live in RTC IO, not IO_MUX FUN_PU/FUN_PD,
++    // so use the driver API, which handles both.
++    gpio_pulldown_dis(13);
++    gpio_pullup_en(13);
+ }
+ #elif defined CONFIG_IDF_TARGET_ESP32C3
+ __FORCEINLINE void DAP_SPI_Deinit()
+-- 
+2.49.0
+
