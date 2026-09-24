@@ -312,6 +312,8 @@ register_toolchains(
     "//toolchains/cc/esp32:cc_toolchain",
     # STM32G0 family (Cortex-M0+) — bare-metal, reuses @arm_gcc.
     "//toolchains/cc/stm32g0:cc_toolchain",
+    # STM32H7 (Cortex-M7, hard-float fpv5-d16) — bare-metal, reuses @arm_gcc.
+    "//toolchains/cc/stm32h7:cc_toolchain",
     # Unicorn simulation target (Cortex-M33 / ARMv8-M) — bare-metal, reuses @arm_gcc.
     "//toolchains/cc/sim_armv8m:cc_toolchain",
 )

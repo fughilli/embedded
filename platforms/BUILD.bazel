@@ -44,6 +44,11 @@ constraint_value(
     constraint_setting = ":board",
 )
 
+constraint_value(
+    name = "stm32h7_board",
+    constraint_setting = ":board",
+)
+
 # RP2350 in Arm Cortex-M33 mode. cpu:armv8-m is exactly the Cortex-M33 profile
 # and is what rules_rust maps thumbv8m.main-none-eabihf to, so this single set
 # resolves BOTH the cc_toolchain and the Rust toolchain.
@@ -96,6 +101,27 @@ platform(
     ],
 )
 
+# STM32H7 (Arm Cortex-M7, armv7e-m). Single-M7-side view of the STM32H757
+# (Cube Orange+ autopilot MCU). Bare-metal, no Arduino core — the board support
+# ships its own startup + linker script and links against the same @arm_gcc
+# arm-none-eabi GCC as the STM32G0/RP2350. cpu:armv7e-m is exactly the
+# Cortex-M7 (and M4) profile, and DOES resolve in @platforms (confirmed:
+# @platforms//cpu:armv7e-m exists in platforms 1.1.0), so — unlike the esp32
+# board-constraint-only case — we key on the real CPU constraint here (with
+# os:none + the board constraint) to resolve the stm32h7 cc_toolchain. The
+# double-precision FPU (fpv5-d16, hard float ABI) is selected by -mfpu/-mfloat-abi
+# in the toolchain, NOT the constraint (mirrors the G0/RP2350 pattern; the
+# armv7e-mf "with fpu" constraint is intentionally not used). No Rust triple: the
+# benchmark app is pure C.
+platform(
+    name = "stm32h7",
+    constraint_values = [
+        "@platforms//cpu:armv7e-m",
+        "@platforms//os:none",
+        ":stm32h7_board",
+    ],
+)
+
 # Unicorn simulation target, ARMv8-M (Cortex-M33) profile. cpu:armv8-m is the
 # same ISA the RP2350 uses, but the `sim_unicorn` marker (not rp2350_board)
 # resolves the dedicated sim cc_toolchain (//toolchains/cc/sim_armv8m) and keeps
@@ -129,6 +155,11 @@ config_setting(
 config_setting(
     name = "is_stm32g0",
     constraint_values = [":stm32g0_board"],
+)
+
+config_setting(
+    name = "is_stm32h7",
+    constraint_values = [":stm32h7_board"],
 )
 
 config_setting(

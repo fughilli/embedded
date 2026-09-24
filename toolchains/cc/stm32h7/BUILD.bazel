@@ -1,0 +1,76 @@
+# STM32H7 family (Arm Cortex-M7) cc_toolchain: our reusable config rule + the
+# same Nix arm-none-eabi GCC (@arm_gcc) used by the RP2350/STM32G0, gated to the
+# //platforms:stm32h7 platform. Targets the single-M7-side view of the STM32H757
+# (Cube Orange+ autopilot MCU).
+load("//toolchains/cc:cc_toolchain_config.bzl", "cc_toolchain_config")
+
+package(default_visibility = ["//visibility:public"])
+
+# Cortex-M7 bare-metal flags. Unlike the G0 (soft-float M0+), the H7 has a
+# double-precision FPU (fpv5-d16). We build HARD float (-mfloat-abi=hard) so the
+# FPU-heavy benchmark is representative — this requires the matching hard-float
+# newlib multilib in @arm_gcc (arm-none-eabi GCC ships it; the hello app link
+# validates it's present). If a future @arm_gcc pin ever lacks the multilib the
+# newlib link will fail and this must fall back to -mfloat-abi=soft (which would
+# make FPU benchmarks unrepresentative — a hard-float toolchain follow-up).
+_CORE_ARCH_FLAGS = [
+    "-mcpu=cortex-m7",
+    "-mthumb",
+    "-mfloat-abi=hard",
+    "-mfpu=fpv5-d16",
+]
+
+cc_toolchain_config(
+    name = "config",
+    toolchain_identifier = "stm32h7-arm-none-eabi",
+    target_cpu = "cortex-m7",
+    target_system_name = "arm-none-eabi",
+    gcc = "@arm_gcc//:gcc",
+    gpp = "@arm_gcc//:g++",
+    ar = "@arm_gcc//:ar",
+    strip = "@arm_gcc//:strip",
+    # Bare-metal, no Arduino core: newlib-nano libc/libm, newlib's syscall stubs
+    # (nosys.specs), and -nostartfiles because //libs/board/stm32h7 supplies its
+    # own Reset_Handler + vector table (crt0 would fight it). --gc-sections drops
+    # the unreferenced newlib startup that nosys still pulls in.
+    compile_flags = _CORE_ARCH_FLAGS + [
+        "-ffunction-sections",
+        "-fdata-sections",
+        "-ffreestanding",
+        "-fno-exceptions",
+        "-fno-unwind-tables",
+        "-no-canonical-prefixes",
+    ],
+    link_flags = _CORE_ARCH_FLAGS + [
+        "--specs=nano.specs",
+        "--specs=nosys.specs",
+        "-nostartfiles",
+        "-Wl,--gc-sections",
+        # NOTE: no -no-canonical-prefixes at link (kept for compile). See the
+        # //toolchains/cc/stm32g0 comment for the macOS hardened-runtime rationale.
+    ],
+)
+
+cc_toolchain(
+    name = "stm32h7_cc",
+    all_files = "@arm_gcc//:all",
+    ar_files = "@arm_gcc//:all",
+    compiler_files = "@arm_gcc//:all",
+    dwp_files = "@arm_gcc//:all",
+    linker_files = "@arm_gcc//:all",
+    objcopy_files = "@arm_gcc//:all",
+    strip_files = "@arm_gcc//:all",
+    toolchain_config = ":config",
+)
+
+# Registered in MODULE.bazel; resolves when the target platform is stm32h7.
+toolchain(
+    name = "cc_toolchain",
+    target_compatible_with = [
+        "@platforms//cpu:armv7e-m",
+        "@platforms//os:none",
+        "//platforms:stm32h7_board",
+    ],
+    toolchain = ":stm32h7_cc",
+    toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
+)
