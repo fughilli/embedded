@@ -958,6 +958,13 @@ cc_library(
     defines = [
         "ESP32_ARDUINO_LIB_BUILDER",
         "ESP_PLATFORM",
+        # From sdk/esp32/flags/defines. MBEDTLS_CONFIG_FILE matters for ABI:
+        # without it, code including mbedtls headers sees the default config
+        # (e.g. the software SHA-256 context) while the prebuilt libraries use
+        # ESP-IDF's (hardware SHA, a larger context) — heap overruns.
+        'MBEDTLS_CONFIG_FILE=\\"mbedtls/esp_config.h\\"',
+        'IDF_VER=\\"v5.5.4\\"',
+        'ESP_MDNS_VERSION_NUMBER=\\"1.11.1\\"',
         "MB_MDNS_IS_INCLUDED",
         "MD5_ENABLED=1",
         # The classic ESP32 SDK is built with the OpenThread spinel (RCP host)
@@ -1102,4 +1109,22 @@ cc_library(
         ":network_esp32",
         ":sdk_hdrs_esp32",
     ],
+)
+
+cc_library(
+    name = "wire_esp32",
+    srcs = glob(["libraries/Wire/src/**/*.cpp"], allow_empty = True),
+    hdrs = glob(["libraries/Wire/src/**/*.h"], allow_empty = True),
+    includes = ["libraries/Wire/src"],
+    copts = _CXX_COPTS_ESP32,
+    deps = [":sdk_hdrs_esp32"],
+)
+
+cc_library(
+    name = "preferences_esp32",
+    srcs = glob(["libraries/Preferences/src/**/*.cpp"], allow_empty = True),
+    hdrs = glob(["libraries/Preferences/src/**/*.h"], allow_empty = True),
+    includes = ["libraries/Preferences/src"],
+    copts = _CXX_COPTS_ESP32,
+    deps = [":sdk_hdrs_esp32"],
 )

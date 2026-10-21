@@ -1,0 +1,3 @@
+# Patches applied to dependency modules (single_version_override in a ROOT
+# module — consumers repeat the override; see the patch headers).
+exports_files(["rules_rust_xtensa.patch"])

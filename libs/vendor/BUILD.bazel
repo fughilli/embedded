@@ -49,3 +49,20 @@ alias(
     name = "wifi_esp32",
     actual = "@arduino_esp32//:wifi_esp32",
 )
+
+# Classic ESP32 builds of bundled libraries (sdk/esp32 headers, Xtensa copts).
+alias(
+    name = "wire_esp32",
+    actual = "@arduino_esp32//:wire_esp32",
+)
+
+alias(
+    name = "preferences_esp32",
+    actual = "@arduino_esp32//:preferences_esp32",
+)
+
+# Partition table generator, for apps with their own partitions CSV.
+alias(
+    name = "gen_esp32part",
+    actual = "@arduino_esp32//:gen_esp32part",
+)

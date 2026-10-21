@@ -1,5 +1,5 @@
 {
-  "checksum": "2160895e747befceaee1ed382ab20f598452233cb1cffaacf2f07f989a00a302",
+  "checksum": "0bca4840efbfbc6f8b063e72c82db21beb0398f5d6393f02753d87d0a615d0dd",
   "crates": {
     "autocfg 1.5.1": {
       "name": "autocfg",
@@ -459,6 +459,9 @@
     ],
     "x86_64-unknown-linux-gnu": [
       "x86_64-unknown-linux-gnu"
+    ],
+    "xtensa-esp32-none-elf": [
+      "xtensa-esp32-none-elf"
     ]
   },
   "direct_deps": [

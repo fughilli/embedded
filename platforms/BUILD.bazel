@@ -49,14 +49,14 @@ platform(
     ],
 )
 
-# Classic ESP32 / ESP32-WROOM (Xtensa LX6, dual core). @platforms//cpu has no
-# xtensa value, so the board constraint alone discriminates; that's fine because
-# no other registered toolchain matches os:none + esp32_board. (No Rust triple
-# either: upstream rustc has no Xtensa backend — Rust-linking apps stay off
-# this board.)
+# Classic ESP32 / ESP32-WROOM (Xtensa LX6, dual core). cpu:xtensa also matches
+# rules_rust's xtensa-esp32-none-elf config_setting (patches/
+# rules_rust_xtensa.patch), which crate_universe crates key on; Rust comes
+# from the esp-rs fork (//toolchains/rust/esp32).
 platform(
     name = "esp32",
     constraint_values = [
+        "@platforms//cpu:xtensa",
         "@platforms//os:none",
         ":esp32_board",
     ],

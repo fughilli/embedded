@@ -19,6 +19,8 @@ exports_files([
     # ESP32 classic / WROOM (Xtensa LX6)
     "xtensa_gcc.BUILD",
     "esp_xtensa_gcc.nix",
+    "esp_rust.BUILD",
+    "esp_rust.nix",
     # interop tooling
     "cbindgen.BUILD",
     "bindgen_tool.BUILD",

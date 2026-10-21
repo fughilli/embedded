@@ -1,0 +1,30 @@
+rules_rust 0.71.3: make the classic ESP32 a known Rust platform triple.
+
+rules_rust only declares @rules_rust//rust/platform:<triple> config_settings
+for triples in its tables, and crate_universe keys every crate's
+target_compatible_with on them — so without this, no crates.io crate can
+build for xtensa-esp32-none-elf (the esp-rs fork's triple). Adds the triple
+(no std) and maps the xtensa CPU to @platforms//cpu:xtensa.
+
+Apply from every root module that builds for the ESP32:
+  single_version_override(module_name = "rules_rust", version = "0.71.3",
+                          patch_strip = 1, patches = [...this file...])
+--- a/rust/platform/triple_mappings.bzl
++++ b/rust/platform/triple_mappings.bzl
+@@ -94,6 +94,8 @@
+     "sparc64-unknown-openbsd": _support(std = True, host_tools = True),
+     "thumbv6-none-eabi": _support(std = False, host_tools = False),
+     "wasm64-unknown-unknown": _support(std = False, host_tools = False),
++    # Classic ESP32 (Xtensa LX6), built with the esp-rs rustc fork.
++    "xtensa-esp32-none-elf": _support(std = False, host_tools = False),
+ }
+ 
+ # The only T3 triples that are supported are ones with at least a stdlib
+@@ -157,6 +159,7 @@
+     "wasm32": "wasm32",
+     "wasm64": "wasm64",
+     "x86_64": "x86_64",
++    "xtensa": "xtensa",
+ }
+ 
+ # Systems that map to a "@platforms//os entry

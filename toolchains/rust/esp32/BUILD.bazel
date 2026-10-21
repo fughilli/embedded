@@ -1,0 +1,91 @@
+# Rust toolchain for the classic ESP32 (Xtensa LX6): the esp-rs rustc fork
+# with a prebuilt no_std sysroot (core + compiler_builtins), from
+# nix/esp_rust.nix. Upstream rustc has no Xtensa backend, so this is the only
+# toolchain that can target :esp32; it resolves for os:none + esp32_board.
+#
+# Crates for this board are no_std, no alloc (the sysroot has neither std nor
+# alloc) and need -Cpanic=abort like the other bare-metal boards. The static
+# library links into the firmware with the board's xtensa-esp-elf GCC, which
+# speaks the same windowed ABI.
+load("@rules_rust//rust:toolchain.bzl", "rust_stdlib_filegroup", "rust_toolchain")
+
+package(default_visibility = ["//visibility:public"])
+
+# rust_stdlib_filegroup symlinks the rlibs relative to its own package, so
+# they're copied in from @esp_rust first. Names are fixed by the derivation's
+# -Cextra-filename=-esp.
+SYSROOT_RLIBS = [
+    "libcore-esp.rlib",
+    "libcompiler_builtins-esp.rlib",
+]
+
+[
+    genrule(
+        name = "copy_" + rlib,
+        srcs = ["@esp_rust//:sysroot_xtensa_esp32"],
+        outs = ["sysroot/" + rlib],
+        cmd = "for f in $(SRCS); do case $$f in */%s) cp $$f $@;; esac; done" % rlib,
+    )
+    for rlib in SYSROOT_RLIBS
+]
+
+rust_stdlib_filegroup(
+    name = "rust_std_xtensa_esp32",
+    srcs = ["sysroot/" + rlib for rlib in SYSROOT_RLIBS],
+)
+
+# One toolchain per build host; @esp_rust carries that host's rustc. Only the
+# hosts whose tarball hash is pinned in nix/esp_rust.nix will actually fetch.
+[
+    (
+        rust_toolchain(
+            name = "xtensa_esp32_%s_impl" % host,
+            binary_ext = "",
+            default_edition = "2021",
+            dylib_ext = ".so",
+            exec_triple = exec_triple,
+            # Firmware Rust is always optimized: fastbuild's opt-level 0 makes
+            # float-heavy code (e.g. 15x15 covariance propagation at 200 Hz)
+            # several times slower on a 240 MHz MCU.
+            opt_level = {
+                "dbg": "1",
+                "fastbuild": "3",
+                "opt": "3",
+            },
+            rust_doc = "@esp_rust//:rustdoc",
+            rust_std = ":rust_std_xtensa_esp32",
+            rustc = "@esp_rust//:rustc",
+            rustc_lib = "@esp_rust//:rustc_lib",
+            staticlib_ext = ".a",
+            stdlib_linkflags = [],
+            target_triple = "xtensa-esp32-none-elf",
+        ),
+        toolchain(
+            name = "xtensa_esp32_%s" % host,
+            exec_compatible_with = exec_constraints,
+            target_compatible_with = [
+                "@platforms//os:none",
+                "//platforms:esp32_board",
+            ],
+            toolchain = ":xtensa_esp32_%s_impl" % host,
+            toolchain_type = "@rules_rust//rust:toolchain",
+        ),
+    )
+    for host, exec_triple, exec_constraints in [
+        (
+            "linux_aarch64",
+            "aarch64-unknown-linux-gnu",
+            ["@platforms//os:linux", "@platforms//cpu:aarch64"],
+        ),
+        (
+            "linux_x86_64",
+            "x86_64-unknown-linux-gnu",
+            ["@platforms//os:linux", "@platforms//cpu:x86_64"],
+        ),
+        (
+            "macos_aarch64",
+            "aarch64-apple-darwin",
+            ["@platforms//os:macos", "@platforms//cpu:aarch64"],
+        ),
+    ]
+]

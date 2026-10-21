@@ -22,6 +22,15 @@ bazel_dep(name = "bazel_skylib", version = "1.9.0")
 bazel_dep(name = "rules_pkg", version = "1.2.0")
 bazel_dep(name = "rules_rust", version = "0.71.3")
 
+# The classic ESP32 (esp-rs, xtensa-esp32-none-elf) as a known rules_rust
+# triple, so crate_universe crates resolve for it. See the patch header.
+single_version_override(
+    module_name = "rules_rust",
+    patch_strip = 1,
+    patches = ["//patches:rules_rust_xtensa.patch"],
+    version = "0.71.3",
+)
+
 # Rust <-> C/C++ interop:
 #  - rules_rust_bindgen: generate Rust FFI from C headers (C -> Rust)
 #  - cxx.rs: the cxx crate's Bazel rules for safe C++ <-> Rust bridges
@@ -127,6 +136,7 @@ nix_pkg.file(
         "//nix:arduino_esp32_drv.nix",
         "//nix:esp32_arduino_libs.nix",
         "//nix:esp_riscv_gcc.nix",
+        "//nix:esp_rust.nix",
         "//nix:esp_xtensa_gcc.nix",
     ],
     attr = "riscv32-esp-elf",
@@ -135,8 +145,8 @@ nix_pkg.file(
 )
 
 # Espressif prebuilt xtensa-esp-elf GCC (same esp-14.2.0_20260121 release) —
-# classic ESP32 / ESP32-WROOM (Xtensa LX6). No Rust triple for this one:
-# upstream rustc has no Xtensa backend (that needs the esp-rs fork).
+# classic ESP32 / ESP32-WROOM (Xtensa LX6). Its Rust comes from the esp-rs
+# fork (@esp_rust below): upstream rustc has no Xtensa backend.
 nix_pkg.file(
     name = "xtensa_gcc",
     file = "//nix:arduino_esp32.nix",
@@ -144,6 +154,7 @@ nix_pkg.file(
         "//nix:arduino_esp32_drv.nix",
         "//nix:esp32_arduino_libs.nix",
         "//nix:esp_riscv_gcc.nix",
+        "//nix:esp_rust.nix",
         "//nix:esp_xtensa_gcc.nix",
     ],
     attr = "xtensa-esp-elf",
@@ -161,11 +172,30 @@ nix_pkg.file(
         "//nix:arduino_esp32_drv.nix",
         "//nix:esp32_arduino_libs.nix",
         "//nix:esp_riscv_gcc.nix",
+        "//nix:esp_rust.nix",
         "//nix:esp_xtensa_gcc.nix",
     ],
     attr = "arduino-esp32",
     repo = "@nixpkgs",
     build_file = "//nix:arduino_esp32.BUILD",
+)
+
+# esp-rs Rust toolchain (rustc fork with the Xtensa backend) + a prebuilt
+# no_std xtensa-esp32-none-elf sysroot — see nix/esp_rust.nix and
+# //toolchains/rust/esp32.
+nix_pkg.file(
+    name = "esp_rust",
+    file = "//nix:arduino_esp32.nix",
+    file_deps = [
+        "//nix:arduino_esp32_drv.nix",
+        "//nix:esp32_arduino_libs.nix",
+        "//nix:esp_riscv_gcc.nix",
+        "//nix:esp_rust.nix",
+        "//nix:esp_xtensa_gcc.nix",
+    ],
+    attr = "esp-rust",
+    repo = "@nixpkgs",
+    build_file = "//nix:esp_rust.BUILD",
 )
 
 use_repo(
@@ -180,6 +210,7 @@ use_repo(
     "esptool",
     "riscv_gcc",
     "xtensa_gcc",
+    "esp_rust",
     "arduino_esp32",
 )
 
@@ -222,6 +253,8 @@ use_repo(rust, "rust_toolchains")
 
 register_toolchains(
     "@rust_toolchains//:all",
+    # Classic ESP32 (Xtensa): esp-rs fork + prebuilt sysroot, from Nix.
+    "//toolchains/rust/esp32:all",
     # bindgen toolchain backed by Nix prebuilt clang/libclang (the default
     # rules_rust_bindgen toolchain compiles LLVM from source — too heavy).
     "//toolchains/bindgen:bindgen_toolchain",
@@ -300,6 +333,8 @@ fw_proto_crate.from_specs(
         "x86_64-unknown-linux-gnu",
         "thumbv8m.main-none-eabi",
         "riscv32imac-unknown-none-elf",
+        # Classic ESP32 via esp-rs (patches/rules_rust_xtensa.patch).
+        "xtensa-esp32-none-elf",
     ],
 )
 use_repo(fw_proto_crate, "fw_proto_crates")
