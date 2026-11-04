@@ -164,8 +164,13 @@ cc_library(
     copts = _MBEDTLS_COPTS,
     # Our symbols must satisfy the precompiled esp-tls/https_server callers.
     alwayslink = True,
-    # esp_* / soc / hal / lwip / freertos headers the port pulls in.
-    deps = ["@arduino_esp32//:sdk_hdrs"],
+    # esp_* / soc / hal / lwip / freertos headers the port pulls in — PRIVATE so
+    # the (esp32c6) SDK's ~315 -I dirs are used to compile mbedtls's own sources
+    # but are NOT re-propagated to consumers. Consumers (the player app / netstack)
+    # already carry their own chip's SDK include set via //libs/board:arduino_core;
+    # propagating the c6 set on top overflowed the g++ -> cc1plus argv on the c3
+    # build (c6 + c3 include lists). implementation_deps keeps mbedtls chip-neutral.
+    implementation_deps = ["@arduino_esp32//:sdk_hdrs"],
 )
 
 # The 11 --wrap flags that route the ssl entrypoints through the dynamic-buffer
