@@ -3,11 +3,48 @@
 #include <string.h>
 
 #include "mbedtls/ctr_drbg.h"
+#include "mbedtls/ecp.h"
 #include "mbedtls/entropy.h"
 #include "mbedtls/pk.h"
 #include "mbedtls/x509_crt.h"
 
 #define MAX_IPS 4
+
+int ledmapper_gen_key(char *out_pem, size_t out_cap) {
+    int ret;
+    mbedtls_pk_context key;
+    mbedtls_ctr_drbg_context drbg;
+    mbedtls_entropy_context entropy;
+
+    mbedtls_pk_init(&key);
+    mbedtls_ctr_drbg_init(&drbg);
+    mbedtls_entropy_init(&entropy);
+
+    const char *pers = "ledmapper-genkey";
+    if ((ret = mbedtls_ctr_drbg_seed(&drbg, mbedtls_entropy_func, &entropy,
+                                     (const unsigned char *)pers, strlen(pers))) != 0)
+        goto done;
+
+    // EC P-256: same curve the cert re-issuance below expects — small PEM, cheap
+    // keygen, and the C6 mbedtls config enables ECDSA_C + secp256r1 + the
+    // ECDHE_ECDSA key exchange, so the resulting leaf works in the TLS handshake.
+    if ((ret = mbedtls_pk_setup(&key, mbedtls_pk_info_from_type(MBEDTLS_PK_ECKEY))) != 0)
+        goto done;
+    if ((ret = mbedtls_ecp_gen_key(MBEDTLS_ECP_DP_SECP256R1, mbedtls_pk_ec(key),
+                                   mbedtls_ctr_drbg_random, &drbg)) != 0)
+        goto done;
+
+    // Writes a NUL-terminated PEM into out_pem (0 on success). PK_WRITE_C +
+    // PEM_WRITE_C are on in the ledmapper config (the x509 cert PEM writer below
+    // relies on the same writers).
+    ret = mbedtls_pk_write_key_pem(&key, (unsigned char *)out_pem, out_cap);
+
+done:
+    mbedtls_pk_free(&key);
+    mbedtls_ctr_drbg_free(&drbg);
+    mbedtls_entropy_free(&entropy);
+    return ret;
+}
 
 int ledmapper_selfsign(const char *key_pem, const char *cn,
                        const uint32_t *ipv4, int n_ips, const char *dns,

@@ -31,6 +31,15 @@ int ledmapper_selfsign(const char *key_pem, const char *cn,
                        const uint32_t *ipv4, int n_ips, const char *dns,
                        char *out_pem, size_t out_cap);
 
+// Generate a fresh EC P-256 (secp256r1 / prime256v1) private key and write it as
+// a NUL-terminated PEM (a "BEGIN EC PRIVATE KEY" block) to `out_pem`. Used
+// for per-device on-device key generation so no private key is baked into the
+// firmware image (FUG-90) — the caller persists the result (e.g. in NVS) and
+// feeds it to ledmapper_selfsign(). EC P-256 keygen is cheap (a one-time
+// few-hundred-ms cost on first boot). Returns 0 on success, or a negative mbedtls
+// error code (e.g. buffer too small).
+int ledmapper_gen_key(char *out_pem, size_t out_cap);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif
