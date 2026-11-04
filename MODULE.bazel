@@ -260,7 +260,10 @@ rust.toolchain(
         "thumbv8m.main-none-eabi",
         "riscv32imac-unknown-none-elf",  # ESP32-C6
         "riscv32imc-unknown-none-elf",  # ESP32-C3 (rv32imc, no atomics)
-        "riscv32imafc-unknown-none-elf",  # ESP32-P4 (hard-float ilp32f)
+        # No ESP32-P4 triple here: rules_rust 0.71's triple table has no riscv32imafc
+        # (extra_target_triples fails the whole extension with "CPU architecture
+        # riscv32imafc is not supported"). A consumer with Rust on the P4 brings its own
+        # rust.repository_set constrained to //platforms:esp32p4_board (Splanc does).
     ],
 )
 use_repo(rust, "rust_toolchains")
