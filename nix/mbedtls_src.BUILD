@@ -106,11 +106,11 @@ genrule(
     cmd = """cat > $@ <<'HDR'
 #include "mbedtls/esp_config.h"
 #undef MBEDTLS_SSL_MAX_CONTENT_LEN
-#define MBEDTLS_SSL_MAX_CONTENT_LEN 8192
+#define MBEDTLS_SSL_MAX_CONTENT_LEN 6144
 #undef MBEDTLS_SSL_IN_CONTENT_LEN
-#define MBEDTLS_SSL_IN_CONTENT_LEN 8192
+#define MBEDTLS_SSL_IN_CONTENT_LEN 6144
 #undef MBEDTLS_SSL_OUT_CONTENT_LEN
-#define MBEDTLS_SSL_OUT_CONTENT_LEN 8192
+#define MBEDTLS_SSL_OUT_CONTENT_LEN 6144
 /* On-device self-signed cert (re)issuance needs the X.509/PK/PEM writers, which
    the ESP config prunes. Purely additive (new writer functions + a separate
    mbedtls_x509write_cert struct we own); no ssl-context struct changes, so
