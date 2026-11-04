@@ -36,6 +36,24 @@ filegroup(name = "sdk_libs", srcs = glob(
     ],
 ))
 filegroup(name = "sdk_ld", srcs = glob(["sdk/esp32c6/ld/*.ld"]))
+
+# The SDK's ldgen-generated linker placement script, for consumers that rewrite
+# it, and a consumer-supplied replacement (a file named sections.ld; the
+# label_flag is empty by default). Both are re-exported by @firmware//ld. ld
+# resolves `-T sections.ld` through the -L search path in order, so the
+# override's dir, placed before the SDK's, wins.
+filegroup(name = "sections_ld", srcs = ["sdk/esp32c6/ld/sections.ld"])
+label_flag(
+    name = "sections_override",
+    build_setting_default = ":no_sections_override",
+)
+filegroup(name = "no_sections_override")
+genrule(
+    name = "ld_override_dirs",
+    srcs = [":sections_override"],
+    outs = ["ld_override_dirs.rsp"],
+    cmd = ": > $@; for f in $(SRCS); do echo \"-L$$(dirname $$f)\" >> $@; done",
+)
 filegroup(name = "ld_flags", srcs = ["sdk/esp32c6/flags/ld_flags"])
 filegroup(name = "ld_scripts", srcs = ["sdk/esp32c6/flags/ld_scripts"])
 
@@ -613,10 +631,12 @@ cc_library(
 cc_library(
     name = "core",
     additional_linker_inputs = [
+        ":ld_override_dirs", ":sections_override",
         ":sdk_link_dirs", ":sdk_libs", ":sdk_ld",
         ":ld_flags", ":ld_scripts", ":ld_libs",
     ],
     linkopts = [
+        "@$(location :ld_override_dirs)",
         "@$(location :sdk_link_dirs)",
         "@$(location :ld_flags)",
         "@$(location :ld_scripts)",

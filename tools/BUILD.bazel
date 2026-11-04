@@ -1,0 +1,11 @@
+"""Host tools from the embedded toolchains, re-exported for consumers (their
+repos are internal to this module's extensions)."""
+
+package(default_visibility = ["//visibility:public"])
+
+# riscv32-esp-elf-objdump: disassembles the ESP32-C6/C3 firmware ELFs (e.g. for
+# a static stack-depth bound).
+alias(
+    name = "riscv_objdump",
+    actual = "@riscv_gcc//:objdump",
+)

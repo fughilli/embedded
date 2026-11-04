@@ -1,0 +1,18 @@
+"""Linker-script hooks for consumers of the esp32c6 SDK link (the sections_ld /
+sections_override targets in nix/arduino_esp32.BUILD, re-exported here because
+that repo isn't visible to the root module)."""
+
+package(default_visibility = ["//visibility:public"])
+
+# The SDK's generated sections.ld, as an input for a consumer's rewrite.
+alias(
+    name = "esp32c6_sections_ld",
+    actual = "@arduino_esp32//:sections_ld",
+)
+
+# Set it to a replacement (a file literally named sections.ld), searched before
+# the SDK's: --@embedded//ld:esp32c6_sections_override=//your:sections_ld.
+alias(
+    name = "esp32c6_sections_override",
+    actual = "@arduino_esp32//:sections_override",
+)
