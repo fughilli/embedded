@@ -1,6 +1,6 @@
 # pyOCD as a hermetic, Bazel-vendored flash/debug driver.
 #
-# pyocd + its deps come from PyPI via rules_python (@pypi, driven by the
+# pyocd + its deps come from PyPI via rules_python (@pyocd_pypi, driven by the
 # committed requirements.lock). Its one native C library, libusb, is NOT taken
 # from a pip wheel: it is materialized from Nix (@libusb) and injected into
 # pyusb by the `nix_libusb` wrapper below. Use //tools/pyocd:pyocd directly
@@ -46,7 +46,7 @@ py_library(
     srcs = ["nix_backend.py"],
     data = [":stage_nix_libs"],
     imports = ["."],
-    deps = ["@pypi//pyusb"],
+    deps = ["@pyocd_pypi//pyusb"],
 )
 
 # Passes every CMSIS pack staged in a pyOCD binary's runfiles (from any cmsis_packs
@@ -64,7 +64,7 @@ py_library(
     name = "elaphurelink_probe",
     srcs = ["elaphurelink_probe.py"],
     imports = ["."],
-    deps = ["@pypi//pyocd"],
+    deps = ["@pyocd_pypi//pyocd"],
 )
 
 # Hardware-free: pyOCD's CMSIS-DAP stack against a fake elaphureLink server.
@@ -85,7 +85,7 @@ py_library(
         ":cmsis_pack_inject",
         ":elaphurelink_probe",
         ":nix_libusb",
-        "@pypi//pyocd",
+        "@pyocd_pypi//pyocd",
     ],
 )
 
@@ -103,7 +103,7 @@ py_binary(
     data = ["packs.in"],
     imports = ["."],
     main = "update_packs.py",
-    deps = ["@pypi//cmsis_pack_manager"],
+    deps = ["@pyocd_pypi//cmsis_pack_manager"],
 )
 
 # Hardware-free check that pyusb binds the Nix libusb (see verify_backend.py).

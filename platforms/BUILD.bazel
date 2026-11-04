@@ -35,6 +35,16 @@ constraint_value(
 )
 
 constraint_value(
+    name = "esp32c3_board",
+    constraint_setting = ":board",
+)
+
+constraint_value(
+    name = "esp32p4_board",
+    constraint_setting = ":board",
+)
+
+constraint_value(
     name = "esp32_board",
     constraint_setting = ":board",
 )
@@ -71,11 +81,33 @@ platform(
     ],
 )
 
+# ESP32-C3 (RISC-V rv32imc — NO atomics, unlike the C6's rv32imac). Build-only
+# target: the firmware compiles for it so CI build-gates c3 work, but the
+# netstack SoC register map is still C6-specific (see firmware/netstack ccmp.rs).
+platform(
+    name = "esp32c3",
+    constraint_values = [
+        "@platforms//cpu:riscv32",
+        "@platforms//os:none",
+        ":esp32c3_board",
+    ],
+)
+
 # Classic ESP32 / ESP32-WROOM (Xtensa LX6, dual core). @platforms//cpu has no
 # xtensa value, so the board constraint alone discriminates; that's fine because
 # no other registered toolchain matches os:none + esp32_board. (No Rust triple
 # either: upstream rustc has no Xtensa backend — Rust-linking apps stay off
 # this board.)
+# ESP32-P4: RISC-V rv32imafc (+ Xesppie), hard-float ABI ilp32f. Die v3.1+.
+platform(
+    name = "esp32p4",
+    constraint_values = [
+        "@platforms//cpu:riscv32",
+        "@platforms//os:none",
+        ":esp32p4_board",
+    ],
+)
+
 platform(
     name = "esp32",
     constraint_values = [
@@ -145,6 +177,16 @@ config_setting(
 config_setting(
     name = "is_esp32c6",
     constraint_values = [":esp32c6_board"],
+)
+
+config_setting(
+    name = "is_esp32c3",
+    constraint_values = [":esp32c3_board"],
+)
+
+config_setting(
+    name = "is_esp32p4",
+    constraint_values = [":esp32p4_board"],
 )
 
 config_setting(

@@ -10,14 +10,24 @@ alias(
     actual = "@fastled//:fastled",
 )
 
+# wifi/webserver/ble/preferences select the per-chip Arduino-library variant so a
+# build carries only its own chip's IDF include set (the c3 variant is built
+# against sdk_hdrs_esp32c3). Without this a c3 image pulled BOTH the c6 and c3
+# include lists and overflowed the g++ -> cc1plus argv. Build-only c3 target.
 alias(
     name = "wifi",
-    actual = "@arduino_esp32//:wifi",
+    actual = select({
+        "//platforms:is_esp32c3": "@arduino_esp32//:wifi_esp32c3",
+        "//conditions:default": "@arduino_esp32//:wifi",
+    }),
 )
 
 alias(
     name = "webserver",
-    actual = "@arduino_esp32//:webserver",
+    actual = select({
+        "//platforms:is_esp32c3": "@arduino_esp32//:webserver_esp32c3",
+        "//conditions:default": "@arduino_esp32//:webserver",
+    }),
 )
 
 alias(
@@ -27,15 +37,29 @@ alias(
 
 alias(
     name = "ble",
-    actual = "@arduino_esp32//:ble",
+    actual = select({
+        "//platforms:is_esp32c3": "@arduino_esp32//:ble_esp32c3",
+        "//conditions:default": "@arduino_esp32//:ble",
+    }),
 )
 
 alias(
     name = "preferences",
-    actual = "@arduino_esp32//:preferences",
+    actual = select({
+        "//platforms:is_esp32c3": "@arduino_esp32//:preferences_esp32c3",
+        "//platforms:is_esp32p4": "@arduino_esp32//:preferences_esp32p4",
+        "//conditions:default": "@arduino_esp32//:preferences",
+    }),
 )
 
 alias(
     name = "partitions_huge_app",
     actual = "@arduino_esp32//:partitions_huge_app",
+)
+
+# The otadata image esptool_flash writes at 0xe000, for bundles that carry a whole
+# flash layout (the P4 image's copy of the C6 images).
+alias(
+    name = "boot_app0",
+    actual = "@arduino_esp32//:boot_app0",
 )

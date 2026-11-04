@@ -79,6 +79,8 @@ debug_elf = rule(
 _BOARD_PLATFORM = {
     "rp2350": Label("//platforms:rp2350"),
     "esp32c6": Label("//platforms:esp32c6"),
+    "esp32c3": Label("//platforms:esp32c3"),
+    "esp32p4": Label("//platforms:esp32p4"),
     "esp32": Label("//platforms:esp32"),
     "stm32g0": Label("//platforms:stm32g0"),
     "stm32h7": Label("//platforms:stm32h7"),
@@ -168,7 +170,7 @@ firmware_binary = rule(
         ),
         "board": attr.string(
             mandatory = True,
-            values = ["rp2350", "esp32c6", "esp32", "stm32g0", "stm32h7"],
+            values = ["rp2350", "esp32c6", "esp32c3", "esp32p4", "esp32", "stm32g0", "stm32h7"],
             doc = "Which board to build for (drives the transition + packager).",
         ),
         "opt_mode": attr.string(

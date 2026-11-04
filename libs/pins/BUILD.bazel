@@ -3,6 +3,7 @@
 #
 # Pins are placeholders — change them to match your wiring:
 #   RP2350 (Pico 2): GPIO 2      ESP32-C6: GPIO 8      ESP32 (WROOM): GPIO 4
+#   ESP32-C3-DevKitC-1: GPIO 8 (matches the C6 devkit's on-board WS2812)
 package(default_visibility = ["//visibility:public"])
 
 cc_library(
@@ -11,6 +12,12 @@ cc_library(
     defines = select({
         "//platforms:is_rp2350": ["LED_DATA_PIN=2"],
         "//platforms:is_esp32c6": ["LED_DATA_PIN=8"],
+        # ESP32-C3-DevKitC-1 on-board WS2812 is GPIO8. TODO(esp32c3): confirm
+        # against the final c3 wiring — build-only target for now.
+        "//platforms:is_esp32c3": ["LED_DATA_PIN=8"],
+        # ESP32-P4: no on-board WS2812 on the dev boards; GPIO20 is a free header
+        # pin (not strapping, USB, SDIO-to-C6 or flash). TODO(esp32p4): board-specific.
+        "//platforms:is_esp32p4": ["LED_DATA_PIN=20"],
         "//platforms:is_esp32": ["LED_DATA_PIN=4"],
     }),
     # Board-only (the select has no default) — skipped by //... off-board; a board
@@ -18,6 +25,8 @@ cc_library(
     target_compatible_with = select({
         "//platforms:is_rp2350": [],
         "//platforms:is_esp32c6": [],
+        "//platforms:is_esp32c3": [],
+        "//platforms:is_esp32p4": [],
         "//platforms:is_esp32": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),

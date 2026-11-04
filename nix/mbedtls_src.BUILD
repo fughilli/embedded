@@ -29,6 +29,24 @@ _MBEDTLS_COPTS = [
     "-DCONFIG_MBEDTLS_DYNAMIC_BUFFER=1",
 ]
 
+# ESP32-C3 (rv32imc — NO atomics, unlike the C6's rv32imac) variant of the copts.
+# Two differences from the C6 build:
+#   1. -march drops the 'a' extension so no lr/sc or amo* is emitted (the C3 would
+#      trap on them). The rest of the c3 firmware is already rv32imc via its
+#      cc_toolchain; only these from-source mbedtls TUs force -march in copts.
+#   2. -DLM_MBEDTLS_NO_HW_ECC makes esp_config_ledmapper.h clear the ESP HW-ECC
+#      alt macros: the C3 has no ECC peripheral (no ecc_hal_*/esp_crypto_ecc_*),
+#      so mbedtls falls back to its software ECP instead of the (unlinkable) HW
+#      port. Paired with :mbedtls_src_esp32c3 dropping port/ecc/*.c from srcs.
+_MBEDTLS_COPTS_ESP32C3 = [
+    c
+    for c in _MBEDTLS_COPTS
+    if c != "-march=rv32imac_zicsr_zifencei"
+] + [
+    "-march=rv32imc_zicsr_zifencei",
+    "-DLM_MBEDTLS_NO_HW_ECC=1",
+]
+
 # mbedtls core (library/*.c) + 3rdparty ECC (everest, p256-m).
 # Everest: compile ONLY the 3 files mbedtls' 3rdparty/everest/CMakeLists.txt
 # lists. Hacl_Curve25519_joined.c #includes Hacl_Curve25519.c (and the
@@ -91,6 +109,13 @@ _PORT_SRCS = [
     "port/dynamic/esp_ssl_tls.c",
 ]
 
+# ESP32-C3 port sources: identical to the C6 set minus the HW-ECC port. The C3 has
+# no ECC accelerator, so port/ecc/esp_ecc.c (ecc_hal_*/esp_crypto_ecc_* — absent on
+# the C3) and port/ecc/ecc_alt.c (the MBEDTLS_ECP_MUL_ALT provider, disabled for the
+# C3 by esp_config_ledmapper.h under -DLM_MBEDTLS_NO_HW_ECC) are dropped, matching
+# IDF's own `if(CONFIG_SOC_ECC_SUPPORTED)` gate. mbedtls then uses its software ECP.
+_PORT_SRCS_ESP32C3 = [s for s in _PORT_SRCS if not s.startswith("port/ecc/")]
+
 # Wrapper mbedtls config: include the ESP port config, then shrink the TLS
 # record length 16 KB -> 8 KB. On the C6 the per-handshake dynamic buffer alloc
 # (~17 KB contiguous) was failing (-0x7F00 / "alloc(17058) failed") in a
@@ -106,11 +131,11 @@ genrule(
     cmd = """cat > $@ <<'HDR'
 #include "mbedtls/esp_config.h"
 #undef MBEDTLS_SSL_MAX_CONTENT_LEN
-#define MBEDTLS_SSL_MAX_CONTENT_LEN 8192
+#define MBEDTLS_SSL_MAX_CONTENT_LEN 6144
 #undef MBEDTLS_SSL_IN_CONTENT_LEN
-#define MBEDTLS_SSL_IN_CONTENT_LEN 8192
+#define MBEDTLS_SSL_IN_CONTENT_LEN 6144
 #undef MBEDTLS_SSL_OUT_CONTENT_LEN
-#define MBEDTLS_SSL_OUT_CONTENT_LEN 8192
+#define MBEDTLS_SSL_OUT_CONTENT_LEN 6144
 /* On-device self-signed cert (re)issuance needs the X.509/PK/PEM writers, which
    the ESP config prunes. Purely additive (new writer functions + a separate
    mbedtls_x509write_cert struct we own); no ssl-context struct changes, so
@@ -126,6 +151,18 @@ genrule(
 #endif
 #ifndef MBEDTLS_PEM_WRITE_C
 #define MBEDTLS_PEM_WRITE_C
+#endif
+/* ESP32-C3 (LM_MBEDTLS_NO_HW_ECC, set only by :mbedtls_src_esp32c3's copts): the C3
+   has no HW ECC peripheral, so clear the ESP HW-ECC alt macros the port's esp_config.h
+   turns on from CONFIG_MBEDTLS_HARDWARE_ECC. This makes ecp.c compile its software
+   point-multiply/verify (instead of expecting the HW alt) and makes ecc_alt.c empty.
+   No-op on the C6 (macro undefined there). Self-contained: paired with the c3 srcs
+   dropping port/ecc/*.c so esp_ecc.c's ecc_hal_* refs never reach the link. */
+#if defined(LM_MBEDTLS_NO_HW_ECC)
+#undef MBEDTLS_ECP_MUL_ALT
+#undef MBEDTLS_ECP_MUL_ALT_SOFT_FALLBACK
+#undef MBEDTLS_ECP_VERIFY_ALT
+#undef MBEDTLS_ECP_VERIFY_ALT_SOFT_FALLBACK
 #endif
 HDR
 """,
@@ -164,8 +201,47 @@ cc_library(
     copts = _MBEDTLS_COPTS,
     # Our symbols must satisfy the precompiled esp-tls/https_server callers.
     alwayslink = True,
-    # esp_* / soc / hal / lwip / freertos headers the port pulls in.
-    deps = ["@arduino_esp32//:sdk_hdrs"],
+    # esp_* / soc / hal / lwip / freertos headers the port pulls in — PRIVATE so
+    # the (esp32c6) SDK's ~315 -I dirs are used to compile mbedtls's own sources
+    # but are NOT re-propagated to consumers. Consumers (the player app / netstack)
+    # already carry their own chip's SDK include set via //libs/board:arduino_core;
+    # propagating the c6 set on top overflowed the g++ -> cc1plus argv on the c3
+    # build (c6 + c3 include lists). implementation_deps keeps mbedtls chip-neutral.
+    implementation_deps = ["@arduino_esp32//:sdk_hdrs"],
+)
+
+# ESP32-C3 variant of :mbedtls_src. Same core + port sources MINUS the HW-ECC port
+# (the C3 has no ECC accelerator; see _PORT_SRCS_ESP32C3), built rv32imc (no atomics)
+# with -DLM_MBEDTLS_NO_HW_ECC so the software ECP is used. It still compiles against
+# the (c6) SDK headers via implementation_deps — matching :mbedtls_src, which the
+# C3 image already links successfully for the AES/SHA/MPI/DS paths (those resolve
+# against the c3 SDK archives); only the ECC path had no c3 symbols to resolve to.
+# Consumed by @arduino_esp32//:core_esp32c3 in place of :mbedtls_src.
+cc_library(
+    name = "mbedtls_src_esp32c3",
+    srcs = _MBEDTLS_CORE + _PORT_SRCS_ESP32C3,
+    hdrs = glob([
+        "mbedtls/include/**/*.h",
+        "mbedtls/library/*.h",
+        "mbedtls/3rdparty/**/*.h",
+        "port/**/*.h",
+    ]) + [":ledmapper_mbedtls_config"],
+    includes = [
+        "cfg",
+        "port/include",
+        "port/aes/include",
+        "port/aes/dma/include",
+        "port/sha/core/include",
+        "mbedtls/include",
+        "mbedtls/library",
+        "mbedtls/3rdparty/everest/include",
+        "mbedtls/3rdparty/everest/include/everest",
+        "mbedtls/3rdparty/everest/include/everest/kremlib",
+        "mbedtls/3rdparty/p256-m",
+    ],
+    copts = _MBEDTLS_COPTS_ESP32C3,
+    alwayslink = True,
+    implementation_deps = ["@arduino_esp32//:sdk_hdrs"],
 )
 
 # The 11 --wrap flags that route the ssl entrypoints through the dynamic-buffer
