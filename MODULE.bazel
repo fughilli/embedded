@@ -148,9 +148,11 @@ nix_pkg.attr(name = "libusb", attr = "libusb1", repo = "@nixpkgs", build_file = 
 nix_pkg.attr(name = "unicorn", attr = "unicorn", repo = "@nixpkgs", build_file = "//nix:unicorn.BUILD")
 
 # --- ESP32-C6 (Milestone 2) ------------------------------------------------
-# esptool — elf -> flashable .bin.
-nix_pkg.attr(
+# esptool — elf -> flashable .bin, and flashing. 5.6.0 from nix/esptool.nix (the
+# pinned nixpkgs' 5.1.0 can't flash an ESP32-P4 v3.x).
+nix_pkg.file(
     name = "esptool",
+    file = "//nix:esptool.nix",
     attr = "esptool",
     repo = "@nixpkgs",
     build_file = "//nix:esptool.BUILD",
