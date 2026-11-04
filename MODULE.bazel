@@ -257,6 +257,7 @@ rust.toolchain(
         # arguments"). eabi maps to the same constraints (cpu:armv8-m, os:none).
         "thumbv8m.main-none-eabi",
         "riscv32imac-unknown-none-elf",  # ESP32-C6
+        "riscv32imc-unknown-none-elf",  # ESP32-C3 (rv32imc, no atomics)
     ],
 )
 use_repo(rust, "rust_toolchains")
@@ -309,6 +310,7 @@ register_toolchains(
     "//toolchains/bindgen:bindgen_toolchain",
     "//toolchains/cc/rp2350_arm:cc_toolchain",
     "//toolchains/cc/esp32c6:cc_toolchain",
+    "//toolchains/cc/esp32c3:cc_toolchain",
     "//toolchains/cc/esp32:cc_toolchain",
     # STM32G0 family (Cortex-M0+) — bare-metal, reuses @arm_gcc.
     "//toolchains/cc/stm32g0:cc_toolchain",

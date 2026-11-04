@@ -35,6 +35,11 @@ constraint_value(
 )
 
 constraint_value(
+    name = "esp32c3_board",
+    constraint_setting = ":board",
+)
+
+constraint_value(
     name = "esp32_board",
     constraint_setting = ":board",
 )
@@ -68,6 +73,18 @@ platform(
         "@platforms//cpu:riscv32",
         "@platforms//os:none",
         ":esp32c6_board",
+    ],
+)
+
+# ESP32-C3 (RISC-V rv32imc — NO atomics, unlike the C6's rv32imac). Build-only
+# target: the firmware compiles for it so CI build-gates c3 work, but the
+# netstack SoC register map is still C6-specific (see firmware/netstack ccmp.rs).
+platform(
+    name = "esp32c3",
+    constraint_values = [
+        "@platforms//cpu:riscv32",
+        "@platforms//os:none",
+        ":esp32c3_board",
     ],
 )
 
@@ -145,6 +162,11 @@ config_setting(
 config_setting(
     name = "is_esp32c6",
     constraint_values = [":esp32c6_board"],
+)
+
+config_setting(
+    name = "is_esp32c3",
+    constraint_values = [":esp32c3_board"],
 )
 
 config_setting(
