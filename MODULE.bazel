@@ -281,11 +281,11 @@ python.toolchain(
 
 pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
 pip.parse(
-    hub_name = "pypi",
+    hub_name = "pyocd_pypi",
     python_version = PYTHON_VERSION,
     requirements_lock = "//tools/pyocd:requirements.lock",
 )
-use_repo(pip, "pypi")
+use_repo(pip, "pyocd_pypi")
 
 # Separate hub for the Unicorn firmware simulator (//rules/sim): the `unicorn`
 # ctypes bindings + `pyelftools` (pure-Python ELF reader). Kept apart from the
