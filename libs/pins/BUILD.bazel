@@ -15,6 +15,9 @@ cc_library(
         # ESP32-C3-DevKitC-1 on-board WS2812 is GPIO8. TODO(esp32c3): confirm
         # against the final c3 wiring — build-only target for now.
         "//platforms:is_esp32c3": ["LED_DATA_PIN=8"],
+        # ESP32-P4: no on-board WS2812 on the dev boards; GPIO20 is a free header
+        # pin (not strapping, USB, SDIO-to-C6 or flash). TODO(esp32p4): board-specific.
+        "//platforms:is_esp32p4": ["LED_DATA_PIN=20"],
         "//platforms:is_esp32": ["LED_DATA_PIN=4"],
     }),
     # Board-only (the select has no default) — skipped by //... off-board; a board

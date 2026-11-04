@@ -19,6 +19,7 @@ pkgs.runCommand "arduino-esp32-3.3.10" { } ''
   mkdir -p $out/sdk
   cp -r --no-preserve=mode,ownership ${libs}/esp32-arduino-libs/esp32c6 $out/sdk/esp32c6
   cp -r --no-preserve=mode,ownership ${libs}/esp32-arduino-libs/esp32c3 $out/sdk/esp32c3
+  cp -r --no-preserve=mode,ownership ${libs}/esp32-arduino-libs/esp32p4 $out/sdk/esp32p4
   find $out \( \
       -name BUILD -o -name BUILD.bazel \
       -o -name WORKSPACE -o -name WORKSPACE.bazel \

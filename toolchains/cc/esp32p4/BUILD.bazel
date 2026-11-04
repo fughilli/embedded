@@ -1,0 +1,59 @@
+# ESP32-P4 (RISC-V rv32imafc + Xesppie, HARD-FLOAT ilp32f) cc_toolchain: the Nix
+# Espressif riscv32-esp-elf GCC (@riscv_gcc), gated to //platforms:esp32p4.
+#
+# Mirrors the esp32c6 toolchain with the P4's arch: the ABI is ilp32f (floats in
+# FPU registers), so every object in the image must be ilp32f, including Rust
+# (riscv32imafc-unknown-none-elf). Most compile/link detail (defines,
+# includes, ld scripts, libs) comes from the esp32-arduino-libs `flags/*`
+# response files in nix/arduino_esp32.BUILD; here we set only the arch flags so
+# the right multilib is selected.
+load("//toolchains/cc:cc_toolchain_config.bzl", "cc_toolchain_config")
+
+package(default_visibility = ["//visibility:public"])
+
+_ARCH_FLAGS = [
+    "-march=rv32imafc_zicsr_zifencei_xesploop_xespv",
+    "-mabi=ilp32f",
+]
+
+cc_toolchain_config(
+    name = "config",
+    toolchain_identifier = "esp32p4-riscv32-esp-elf",
+    target_cpu = "riscv32",
+    target_system_name = "riscv32-esp-elf",
+    gcc = "@riscv_gcc//:gcc",
+    gpp = "@riscv_gcc//:g++",
+    ar = "@riscv_gcc//:ar",
+    strip = "@riscv_gcc//:strip",
+    compile_flags = _ARCH_FLAGS + [
+        "-ffunction-sections",
+        "-fdata-sections",
+        "-no-canonical-prefixes",
+    ],
+    link_flags = _ARCH_FLAGS + [
+        "-no-canonical-prefixes",
+    ],
+)
+
+cc_toolchain(
+    name = "esp32p4_cc",
+    all_files = "@riscv_gcc//:all",
+    ar_files = "@riscv_gcc//:all",
+    compiler_files = "@riscv_gcc//:all",
+    dwp_files = "@riscv_gcc//:all",
+    linker_files = "@riscv_gcc//:all",
+    objcopy_files = "@riscv_gcc//:all",
+    strip_files = "@riscv_gcc//:all",
+    toolchain_config = ":config",
+)
+
+toolchain(
+    name = "cc_toolchain",
+    target_compatible_with = [
+        "@platforms//cpu:riscv32",
+        "@platforms//os:none",
+        "//platforms:esp32p4_board",
+    ],
+    toolchain = ":esp32p4_cc",
+    toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
+)

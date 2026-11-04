@@ -40,6 +40,11 @@ constraint_value(
 )
 
 constraint_value(
+    name = "esp32p4_board",
+    constraint_setting = ":board",
+)
+
+constraint_value(
     name = "esp32_board",
     constraint_setting = ":board",
 )
@@ -93,6 +98,16 @@ platform(
 # no other registered toolchain matches os:none + esp32_board. (No Rust triple
 # either: upstream rustc has no Xtensa backend — Rust-linking apps stay off
 # this board.)
+# ESP32-P4: RISC-V rv32imafc (+ Xesppie), hard-float ABI ilp32f. Die v3.1+.
+platform(
+    name = "esp32p4",
+    constraint_values = [
+        "@platforms//cpu:riscv32",
+        "@platforms//os:none",
+        ":esp32p4_board",
+    ],
+)
+
 platform(
     name = "esp32",
     constraint_values = [
@@ -167,6 +182,11 @@ config_setting(
 config_setting(
     name = "is_esp32c3",
     constraint_values = [":esp32c3_board"],
+)
+
+config_setting(
+    name = "is_esp32p4",
+    constraint_values = [":esp32p4_board"],
 )
 
 config_setting(

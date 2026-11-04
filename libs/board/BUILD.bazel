@@ -22,6 +22,7 @@ cc_library(
         "//platforms:is_rp2350": ["@arduino_pico//:core"],
         "//platforms:is_esp32c6": ["@arduino_esp32//:core"],
         "//platforms:is_esp32c3": ["@arduino_esp32//:core_esp32c3"],
+        "//platforms:is_esp32p4": ["@arduino_esp32//:core_esp32p4"],
         "//platforms:is_esp32": ["@arduino_esp32//:core_esp32"],
     }),
 )
@@ -42,6 +43,7 @@ cc_library(
         "//platforms:is_rp2350": ["rp2350.cpp"],
         "//platforms:is_esp32c6": ["esp32c6.cpp"],
         "//platforms:is_esp32c3": ["esp32c3.cpp"],
+        "//platforms:is_esp32p4": ["esp32p4.cpp"],
         "//platforms:is_esp32": ["esp32.cpp"],
     }),
     hdrs = ["board.h"],
@@ -77,6 +79,19 @@ genrule(
     cmd = ("$(execpath @esptool//:bin) --chip esp32c3 elf2image " +
            "--flash_mode dio --flash_freq 80m --flash_size 4MB " +
            "-o $@ $(location @arduino_esp32//:bootloader_elf_esp32c3)"),
+    tools = ["@esptool//:bin", "@esptool//:all"],
+)
+
+# ESP32-P4 second-stage bootloader as a flashable .bin. The P4 ROM loads it from
+# 0x2000 (esptool_flash: bootloader_offset = "0x2000"). 16MB is the libs'
+# sdkconfig flash size; boards with more flash still boot from this header.
+genrule(
+    name = "esp32p4_bootloader_bin",
+    srcs = ["@arduino_esp32//:bootloader_elf_esp32p4"],
+    outs = ["esp32p4_bootloader.bin"],
+    cmd = ("$(execpath @esptool//:bin) --chip esp32p4 elf2image " +
+           "--flash_mode dio --flash_freq 80m --flash_size 16MB " +
+           "-o $@ $(location @arduino_esp32//:bootloader_elf_esp32p4)"),
     tools = ["@esptool//:bin", "@esptool//:all"],
 )
 

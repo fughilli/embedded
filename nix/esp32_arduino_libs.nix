@@ -20,5 +20,5 @@ let
 in
 pkgs.runCommand "esp32-arduino-libs-c6-c3" { nativeBuildInputs = [ pkgs.unzip ]; } ''
   mkdir -p $out
-  unzip -q ${zip} 'esp32-arduino-libs/esp32c6/*' 'esp32-arduino-libs/esp32c3/*' -d $out
+  unzip -q ${zip} 'esp32-arduino-libs/esp32c6/*' 'esp32-arduino-libs/esp32c3/*' 'esp32-arduino-libs/esp32p4/*' -d $out
 ''

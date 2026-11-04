@@ -47,6 +47,7 @@ alias(
     name = "preferences",
     actual = select({
         "//platforms:is_esp32c3": "@arduino_esp32//:preferences_esp32c3",
+        "//platforms:is_esp32p4": "@arduino_esp32//:preferences_esp32p4",
         "//conditions:default": "@arduino_esp32//:preferences",
     }),
 )
@@ -54,4 +55,11 @@ alias(
 alias(
     name = "partitions_huge_app",
     actual = "@arduino_esp32//:partitions_huge_app",
+)
+
+# The otadata image esptool_flash writes at 0xe000, for bundles that carry a whole
+# flash layout (the P4 image's copy of the C6 images).
+alias(
+    name = "boot_app0",
+    actual = "@arduino_esp32//:boot_app0",
 )
