@@ -34,10 +34,19 @@ def _rloc(ctx, f):
         return sp[len("../"):]
     return ctx.workspace_name + "/" + sp
 
-def _launcher(ctx, tool_file, parts, runfiles_extra):
+def _launcher(ctx, tool_file, parts, runfiles_extra, pass_args_last = False):
     """parts: ordered list of ('lit', str) or ('file', File) forming the argv
-    after the tool. runfiles_extra: extra depset/list of files to stage."""
-    argv = ['"$(rlocation %s)"' % _rloc(ctx, tool_file), '"$@"']
+    after the tool. runfiles_extra: extra depset/list of files to stage.
+
+    pass_args_last: where the launcher's own `"$@"` (pass-through CLI args) goes.
+    Default False places it right after the tool (before `parts`) — correct for
+    tools whose global options precede the subcommand, e.g. esptool
+    (`esptool --port X write-flash ...`). True places it after `parts` — correct
+    for tools whose extra flags trail the subcommand/filename, e.g. picotool
+    device selection (`picotool load -x <uf2> -f`)."""
+    argv = ['"$(rlocation %s)"' % _rloc(ctx, tool_file)]
+    if not pass_args_last:
+        argv.append('"$@"')
     files = [tool_file]
     for kind, val in parts:
         if kind == "lit":
@@ -45,6 +54,8 @@ def _launcher(ctx, tool_file, parts, runfiles_extra):
         else:
             argv.append('"$(rlocation %s)"' % _rloc(ctx, val))
             files.append(val)
+    if pass_args_last:
+        argv.append('"$@"')
     out = ctx.actions.declare_file(ctx.label.name + ".sh")
     ctx.actions.write(out, _RUNFILES_INIT + "exec " + " ".join(argv) + "\n", is_executable = True)
     runfiles = ctx.runfiles(files = files + runfiles_extra)
@@ -107,10 +118,12 @@ esptool_flash = rule(
 # RP2350 (picotool)
 # ---------------------------------------------------------------------------
 def _picotool_flash_impl(ctx):
-    # `load -x` writes the UF2 and reboots into the app. Requires the board in
-    # BOOTSEL mode (USB mass-storage / picoboot).
+    # `load -x` writes the UF2 and reboots into the app. The board must be in
+    # BOOTSEL (USB mass-storage / picoboot); pass `-- -f` to force a running
+    # board into BOOTSEL first. Pass-through args trail the filename, where
+    # picotool's device-selection flags belong (pass_args_last).
     parts = [("lit", "load"), ("lit", "-x"), ("file", ctx.file.uf2)]
-    return _launcher(ctx, ctx.file.tool, parts, ctx.files.tool_data)
+    return _launcher(ctx, ctx.file.tool, parts, ctx.files.tool_data, pass_args_last = True)
 
 picotool_flash = rule(
     implementation = _picotool_flash_impl,
