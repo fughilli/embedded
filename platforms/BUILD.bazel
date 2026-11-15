@@ -59,6 +59,11 @@ constraint_value(
     constraint_setting = ":board",
 )
 
+constraint_value(
+    name = "gd32e230_board",
+    constraint_setting = ":board",
+)
+
 # RP2350 in Arm Cortex-M33 mode. cpu:armv8-m is exactly the Cortex-M33 profile
 # and is what rules_rust maps thumbv8m.main-none-eabihf to, so this single set
 # resolves BOTH the cc_toolchain and the Rust toolchain.
@@ -168,10 +173,33 @@ platform(
     ],
 )
 
+# GD32E230 (Arm Cortex-M23, armv8-m BASELINE). Bare-metal, no core — the app
+# ships its own startup + linker script (e.g. the rd03e-reverse firmware's
+# in-crate Rust runtime). Discriminated by the `board` constraint ALONE (no
+# @platforms//cpu:armv8-m): the Cortex-M33 (rp2350) is ALSO armv8-m, and the
+# prebuilt rules_rust `thumbv8m.main` toolchain is constrained to [armv8-m,
+# none]. If this platform carried armv8-m, that M33 Rust toolchain would match
+# it and collide with our `thumbv8m.base` toolchain (rules_rust 0.71 has no
+# distinct baseline/mainline cpu value). Board-only discrimination keeps the two
+# apart — mirrors how the esp32 board resolves without a cpu constraint. The
+# -mcpu=cortex-m23 lives in the cc_toolchain flags, not here.
+platform(
+    name = "gd32e230",
+    constraint_values = [
+        "@platforms//os:none",
+        ":gd32e230_board",
+    ],
+)
+
 # config_settings so libraries can select() on the active board.
 config_setting(
     name = "is_rp2350",
     constraint_values = [":rp2350_board"],
+)
+
+config_setting(
+    name = "is_gd32e230",
+    constraint_values = [":gd32e230_board"],
 )
 
 config_setting(
