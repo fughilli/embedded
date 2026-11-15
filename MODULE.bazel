@@ -268,6 +268,27 @@ rust.toolchain(
 )
 use_repo(rust, "rust_toolchains")
 
+# NOTE on GD32E230 / Cortex-M23 Rust (`thumbv8m.base-none-eabi`): rules_rust's
+# toolchain configuration — including `rust.repository_set` — is processed ONLY
+# from the ROOT module, so it cannot be registered here for consumers. A repo
+# that wants to build Cortex-M23 Rust firmware against this module's gd32e230
+# platform + cc_toolchain registers its own board-constrained repository_set in
+# its OWN (root) MODULE.bazel (the same pattern Splanc uses for the ESP32-P4).
+# The triple isn't in rules_rust 0.71's builtin table, and the set is board-
+# constrained (NOT cpu) so it doesn't collide with `thumbv8m.main`/Cortex-M33 —
+# see //platforms:gd32e230. Copy-paste block for a consumer's root MODULE.bazel:
+#
+#   rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
+#   rust.toolchain(edition = "2021", versions = ["1.85.0"])
+#   [rust.repository_set(
+#       name = "rust_cm23_" + h["n"], versions = ["1.85.0"],
+#       exec_triple = h["t"], target_triple = "thumbv8m.base-none-eabi",
+#       target_compatible_with = ["@platforms//os:none",
+#                                 "@firmware//platforms:gd32e230_board"],
+#   ) for h in [...aarch64/x86_64-linux, aarch64-darwin...]]
+#   use_repo(rust, "rust_toolchains")
+#   register_toolchains("@rust_toolchains//:all")
+
 # ---------------------------------------------------------------------------
 # Python: hermetic interpreter + pip, for the pyOCD flash driver (//tools/pyocd).
 # The interpreter comes from rules_python (no system Python needed); pyocd and
@@ -323,6 +344,9 @@ register_toolchains(
     "//toolchains/cc/stm32g0:cc_toolchain",
     # STM32H7 (Cortex-M7, hard-float fpv5-d16) — bare-metal, reuses @arm_gcc.
     "//toolchains/cc/stm32h7:cc_toolchain",
+    # GD32E230 (Cortex-M23, armv8-m baseline, soft-float) — bare-metal, reuses
+    # @arm_gcc. Links the rd03e-reverse from-source Rust firmware.
+    "//toolchains/cc/gd32e230:cc_toolchain",
     # Unicorn simulation target (Cortex-M33 / ARMv8-M) — bare-metal, reuses @arm_gcc.
     "//toolchains/cc/sim_armv8m:cc_toolchain",
 )
