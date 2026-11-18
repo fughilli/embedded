@@ -4,6 +4,8 @@
 # Compile: includes/defines as native attrs (propagate to the app); per-language
 # std flags. Link: -L dirs computed at build time + the shipped ld_* response
 # files, in a --start-group with the SDK archives.
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
+
 package(default_visibility = ["//visibility:public"])
 
 # -L dirs for lib/, ld/, and the memory-type dir, from real staged paths.
@@ -264,13 +266,16 @@ cc_library(
         "sdk/esp32c6/include/esp_phy/include",
         "sdk/esp32c6/include/esp_phy/esp32c6/include",
         "sdk/esp32c6/include/esp_netif/include",
-        "sdk/esp32c6/include/mbedtls/port/include",
-        "sdk/esp32c6/include/mbedtls/mbedtls/include",
-        "sdk/esp32c6/include/mbedtls/mbedtls/library",
+        # The prebuilt SDK's own mbedtls include dirs (port/include, mbedtls/include,
+        # mbedtls/library, 3rdparty/everest, p256-m) are deliberately NOT here: this
+        # image links the from-source @mbedtls_src, which carries its own headers AND
+        # its config (MBEDTLS_CONFIG_FILE, a propagated define). With both on the
+        # path the SDK's came first, and a TU that reached mbedtls through them
+        # compiled against a config the library was not built with (splanc #468:
+        # mbedtls_ssl_context 344 B vs the library's 552 B). Now the only mbedtls
+        # headers a TU can see are @mbedtls_src's, so anything that includes them
+        # without depending on it fails to compile instead of silently mismatching.
         "sdk/esp32c6/include/mbedtls/esp_crt_bundle/include",
-        "sdk/esp32c6/include/mbedtls/mbedtls/3rdparty/everest/include",
-        "sdk/esp32c6/include/mbedtls/mbedtls/3rdparty/p256-m",
-        "sdk/esp32c6/include/mbedtls/mbedtls/3rdparty/p256-m/p256-m",
         "sdk/esp32c6/include/fatfs/diskio",
         "sdk/esp32c6/include/fatfs/src",
         "sdk/esp32c6/include/fatfs/vfs",
@@ -1353,13 +1358,16 @@ cc_library(
         "sdk/esp32c3/include/esp_phy/include",
         "sdk/esp32c3/include/esp_phy/esp32c3/include",
         "sdk/esp32c3/include/esp_netif/include",
-        "sdk/esp32c3/include/mbedtls/port/include",
-        "sdk/esp32c3/include/mbedtls/mbedtls/include",
-        "sdk/esp32c3/include/mbedtls/mbedtls/library",
+        # The prebuilt SDK's own mbedtls include dirs (port/include, mbedtls/include,
+        # mbedtls/library, 3rdparty/everest, p256-m) are deliberately NOT here: this
+        # image links the from-source @mbedtls_src, which carries its own headers AND
+        # its config (MBEDTLS_CONFIG_FILE, a propagated define). With both on the
+        # path the SDK's came first, and a TU that reached mbedtls through them
+        # compiled against a config the library was not built with (splanc #468:
+        # mbedtls_ssl_context 344 B vs the library's 552 B). Now the only mbedtls
+        # headers a TU can see are @mbedtls_src's, so anything that includes them
+        # without depending on it fails to compile instead of silently mismatching.
         "sdk/esp32c3/include/mbedtls/esp_crt_bundle/include",
-        "sdk/esp32c3/include/mbedtls/mbedtls/3rdparty/everest/include",
-        "sdk/esp32c3/include/mbedtls/mbedtls/3rdparty/p256-m",
-        "sdk/esp32c3/include/mbedtls/mbedtls/3rdparty/p256-m/p256-m",
         "sdk/esp32c3/include/fatfs/diskio",
         "sdk/esp32c3/include/fatfs/src",
         "sdk/esp32c3/include/fatfs/vfs",
@@ -1783,6 +1791,51 @@ filegroup(name = "sdk_libs_esp32p4", srcs = glob([
     "sdk/esp32p4/ld/*.a",
 ]))
 filegroup(name = "sdk_ld_esp32p4", srcs = glob(["sdk/esp32p4/ld/*.ld"]))
+
+# The SDK's sections.ld and a consumer's replacement, as for the esp32c6 above
+# (re-exported by @embedded//ld): the override's dir goes first on the -L path.
+filegroup(name = "sections_ld_esp32p4", srcs = ["sdk/esp32p4/ld/sections.ld"])
+label_flag(
+    name = "sections_override_esp32p4",
+    build_setting_default = ":no_sections_override",
+)
+genrule(
+    name = "ld_override_dirs_esp32p4",
+    srcs = [":sections_override_esp32p4"],
+    outs = ["ld_override_dirs_esp32p4.rsp"],
+    cmd = ": > $@; for f in $(SRCS); do echo \"-L$$(dirname $$f)\" >> $@; done",
+)
+
+# --- sdkconfig overrides (esp32p4) ---------------------------------------------
+# The SDK's sdkconfig.h is frozen with the prebuilt archives. A consumer can still
+# change options for everything compiled FROM SOURCE: its own code, this Arduino core,
+# and the IDF components rebuilt from source (@idf_src). The overrides are a header of
+# `#define CONFIG_X v` / `#undef CONFIG_X` lines
+# (--@embedded//sdk:esp32p4_sdkconfig_overrides=//your:overrides.h), appended to the
+# frozen file (an #undef before each #define) at the same include path. An option that
+# changes code inside a prebuilt archive needs that component rebuilt too
+# (--@embedded//sdk:esp32p4_esp_psram_from_source), and one that moves sections the
+# matching sections.ld (@embedded//ld:esp32p4_ext_ram_bss_sections_ld).
+label_flag(
+    name = "sdkconfig_overrides_esp32p4",
+    build_setting_default = ":no_sdkconfig_overrides",
+)
+filegroup(name = "no_sdkconfig_overrides")
+genrule(
+    name = "sdkconfig_h_esp32p4",
+    srcs = ["sdk/esp32p4/qio_qspi/include/sdkconfig.h", ":sdkconfig_overrides_esp32p4"],
+    outs = ["sdkconfig_esp32p4/sdkconfig.h"],
+    cmd = 'cp $(location sdk/esp32p4/qio_qspi/include/sdkconfig.h) $@ && chmod u+w $@ && for f in $(SRCS); do [ "$$f" = "$(location sdk/esp32p4/qio_qspi/include/sdkconfig.h)" ] && continue; echo "/* sdkconfig overrides: $$f */" >> $@; awk \'/^[ \\t]*#[ \\t]*define[ \\t]+CONFIG_/ { print "#undef " $$2 } { print }\' "$$f" >> $@; done',
+)
+
+# IDF components rebuilt from source against the overlay, in place of their prebuilt
+# objects. esp_psram: what CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY changes (the
+# PSRAM heap leaves .ext_ram.bss out; boot zeroes it).
+bool_flag(name = "esp_psram_from_source_esp32p4", build_setting_default = False)
+config_setting(
+    name = "esp_psram_from_source_esp32p4_on",
+    flag_values = {":esp_psram_from_source_esp32p4": "true"},
+)
 filegroup(name = "ld_flags_esp32p4", srcs = ["sdk/esp32p4/flags/ld_flags"])
 filegroup(name = "ld_scripts_esp32p4", srcs = ["sdk/esp32p4/flags/ld_scripts"])
 filegroup(name = "ld_libs_esp32p4", srcs = ["sdk/esp32p4/flags/ld_libs"])
@@ -1791,11 +1844,11 @@ filegroup(name = "bootloader_elf_esp32p4", srcs = ["sdk/esp32p4/bin/bootloader_q
 cc_library(
     name = "sdk_hdrs_esp32p4",
     hdrs = glob(
-        ["sdk/esp32p4/include/**/*.h", "sdk/esp32p4/qio_qspi/include/**/*.h",
+        ["sdk/esp32p4/include/**/*.h",
          "cores/esp32/**/*.h", "variants/esp32p4/**/*.h", "sdk/esp32p4/include/**/*.hpp",
          "libraries/SPI/**/*.h"],
         allow_empty = True,
-    ),
+    ) + [":sdkconfig_h_esp32p4"],  # the frozen sdkconfig.h + overrides (above)
     includes = [
         "sdk/esp32p4/include/newlib/platform_include",
         "sdk/esp32p4/include/freertos/config/include",
@@ -2091,7 +2144,7 @@ cc_library(
         "sdk/esp32p4/include/arduino_tinyusb/tinyusb/src",
         "sdk/esp32p4/include/arduino_tinyusb/include",
         "sdk/esp32p4/include/fb_gfx/include",
-        "sdk/esp32p4/qio_qspi/include",
+        "sdkconfig_esp32p4",  # in place of sdk/esp32p4/qio_qspi/include (sdkconfig.h only)
         "cores/esp32",
         "variants/esp32p4",
         "libraries/SPI/src",  # FastLED's ESP32 SPI shim includes <SPI.h>
@@ -2209,10 +2262,12 @@ cc_library(
 cc_library(
     name = "core_esp32p4",
     additional_linker_inputs = [
+        ":ld_override_dirs_esp32p4", ":sections_override_esp32p4",
         ":sdk_link_dirs_esp32p4", ":sdk_libs_esp32p4", ":sdk_ld_esp32p4",
         ":ld_flags_esp32p4", ":ld_scripts_esp32p4", ":ld_libs_esp32p4",
     ],
     linkopts = [
+        "@$(location :ld_override_dirs_esp32p4)",
         "@$(location :sdk_link_dirs_esp32p4)",
         "@$(location :ld_flags_esp32p4)",
         "@$(location :ld_scripts_esp32p4)",
@@ -2222,7 +2277,10 @@ cc_library(
         "-Wl,--end-group",
         "-Wl,-EL",
     ],
-    deps = [":core_c_esp32p4", ":core_cpp_esp32p4", ":sdk_hdrs_esp32p4"],
+    deps = [":core_c_esp32p4", ":core_cpp_esp32p4", ":sdk_hdrs_esp32p4"] + select({
+        ":esp_psram_from_source_esp32p4_on": ["@idf_src//:esp_psram_esp32p4"],
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(
