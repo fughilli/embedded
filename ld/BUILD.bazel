@@ -2,6 +2,8 @@
 sections_override targets in nix/arduino_esp32.BUILD, re-exported here because
 that repo isn't visible to the root module)."""
 
+load("@rules_python//python:defs.bzl", "py_binary")
+
 package(default_visibility = ["//visibility:public"])
 
 # The SDK's generated sections.ld, as an input for a consumer's rewrite.
@@ -15,4 +17,32 @@ alias(
 alias(
     name = "esp32c6_sections_override",
     actual = "@arduino_esp32//:sections_override",
+)
+
+# The same two for the esp32p4 SDK link.
+alias(
+    name = "esp32p4_sections_ld",
+    actual = "@arduino_esp32//:sections_ld_esp32p4",
+)
+
+alias(
+    name = "esp32p4_sections_override",
+    actual = "@arduino_esp32//:sections_override_esp32p4",
+)
+
+# The esp32p4 sections.ld with .ext_ram.bss in PSRAM, for
+# CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY in the sdkconfig overlay (//sdk): point
+# --@embedded//ld:esp32p4_sections_override here (a consumer with its own rewrite runs
+# ext_ram_bss.py on that instead).
+py_binary(
+    name = "ext_ram_bss",
+    srcs = ["ext_ram_bss.py"],
+)
+
+genrule(
+    name = "esp32p4_ext_ram_bss_sections_ld",
+    srcs = [":esp32p4_sections_ld"],
+    outs = ["esp32p4_ext_ram_bss/sections.ld"],
+    cmd = "$(location :ext_ram_bss) $(location :esp32p4_sections_ld) $@",
+    tools = [":ext_ram_bss"],
 )

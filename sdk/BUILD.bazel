@@ -1,0 +1,29 @@
+"""sdkconfig overrides for the prebuilt ESP-IDF SDKs (nix/arduino_esp32.BUILD
+"sdkconfig overrides"), re-exported because that repo isn't visible to consumers.
+
+The SDK archives are prebuilt with a frozen sdkconfig. The overlay changes the options
+everything compiled from source sees (the consumer, the Arduino core, and the IDF
+components rebuilt from source here). An option that changes code inside a prebuilt
+archive takes effect only with that component rebuilt; one that moves sections, only
+with a matching sections.ld (@embedded//ld). E.g. static buffers in PSRAM
+(EXT_RAM_BSS_ATTR) on the esp32p4:
+
+    build --@embedded//sdk:esp32p4_sdkconfig_overrides=//fw:sdkconfig_overrides.h
+    #   (with `#define CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY 1`)
+    build --@embedded//sdk:esp32p4_esp_psram_from_source
+    build --@embedded//ld:esp32p4_sections_override=@embedded//ld:esp32p4_ext_ram_bss_sections_ld
+"""
+
+package(default_visibility = ["//visibility:public"])
+
+# A header of `#define CONFIG_X v` / `#undef CONFIG_X` lines.
+alias(
+    name = "esp32p4_sdkconfig_overrides",
+    actual = "@arduino_esp32//:sdkconfig_overrides_esp32p4",
+)
+
+# Rebuild esp_psram's system layer from IDF source against the overlay.
+alias(
+    name = "esp32p4_esp_psram_from_source",
+    actual = "@arduino_esp32//:esp_psram_from_source_esp32p4",
+)

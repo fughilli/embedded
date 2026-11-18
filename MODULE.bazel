@@ -120,6 +120,17 @@ nix_pkg.file(
     build_file = "//nix:mbedtls_src.BUILD",
 )
 
+# ESP-IDF v5.5.4 component sources (nix/idf_src.nix + nix/idf_src.BUILD): single
+# components rebuilt FROM SOURCE against the sdkconfig overlay (arduino_esp32.BUILD).
+nix_pkg.file(
+    name = "idf_src",
+    file = "//nix:idf_src.nix",
+    file_deps = ["//nix:idf_glue/esp_psram_ext_bss_init.c"],
+    attr = "idf-src",
+    repo = "@nixpkgs",
+    build_file = "//nix:idf_src.BUILD",
+)
+
 # cbindgen (Rust -> C/C++ headers) — used by //rules:cbindgen.bzl.
 nix_pkg.attr(
     name = "cbindgen",
@@ -222,6 +233,7 @@ use_repo(
     "xtensa_gcc",
     "arduino_esp32",
     "mbedtls_src",
+    "idf_src",
     "libusb",
     "unicorn",
 )

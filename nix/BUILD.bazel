@@ -16,6 +16,10 @@ exports_files([
     "arduino_esp32_drv.nix",
     "esp_riscv_gcc.nix",
     "esp32_arduino_libs.nix",
+    # ESP-IDF components rebuilt from source (sdkconfig overrides)
+    "idf_src.nix",
+    "idf_src.BUILD",
+    "idf_glue/esp_psram_ext_bss_init.c",
     # ESP32 classic / WROOM (Xtensa LX6)
     "xtensa_gcc.BUILD",
     "esp_xtensa_gcc.nix",
