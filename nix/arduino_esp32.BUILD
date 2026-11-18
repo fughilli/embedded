@@ -264,13 +264,16 @@ cc_library(
         "sdk/esp32c6/include/esp_phy/include",
         "sdk/esp32c6/include/esp_phy/esp32c6/include",
         "sdk/esp32c6/include/esp_netif/include",
-        "sdk/esp32c6/include/mbedtls/port/include",
-        "sdk/esp32c6/include/mbedtls/mbedtls/include",
-        "sdk/esp32c6/include/mbedtls/mbedtls/library",
+        # The prebuilt SDK's own mbedtls include dirs (port/include, mbedtls/include,
+        # mbedtls/library, 3rdparty/everest, p256-m) are deliberately NOT here: this
+        # image links the from-source @mbedtls_src, which carries its own headers AND
+        # its config (MBEDTLS_CONFIG_FILE, a propagated define). With both on the
+        # path the SDK's came first, and a TU that reached mbedtls through them
+        # compiled against a config the library was not built with (splanc #468:
+        # mbedtls_ssl_context 344 B vs the library's 552 B). Now the only mbedtls
+        # headers a TU can see are @mbedtls_src's, so anything that includes them
+        # without depending on it fails to compile instead of silently mismatching.
         "sdk/esp32c6/include/mbedtls/esp_crt_bundle/include",
-        "sdk/esp32c6/include/mbedtls/mbedtls/3rdparty/everest/include",
-        "sdk/esp32c6/include/mbedtls/mbedtls/3rdparty/p256-m",
-        "sdk/esp32c6/include/mbedtls/mbedtls/3rdparty/p256-m/p256-m",
         "sdk/esp32c6/include/fatfs/diskio",
         "sdk/esp32c6/include/fatfs/src",
         "sdk/esp32c6/include/fatfs/vfs",
@@ -1353,13 +1356,16 @@ cc_library(
         "sdk/esp32c3/include/esp_phy/include",
         "sdk/esp32c3/include/esp_phy/esp32c3/include",
         "sdk/esp32c3/include/esp_netif/include",
-        "sdk/esp32c3/include/mbedtls/port/include",
-        "sdk/esp32c3/include/mbedtls/mbedtls/include",
-        "sdk/esp32c3/include/mbedtls/mbedtls/library",
+        # The prebuilt SDK's own mbedtls include dirs (port/include, mbedtls/include,
+        # mbedtls/library, 3rdparty/everest, p256-m) are deliberately NOT here: this
+        # image links the from-source @mbedtls_src, which carries its own headers AND
+        # its config (MBEDTLS_CONFIG_FILE, a propagated define). With both on the
+        # path the SDK's came first, and a TU that reached mbedtls through them
+        # compiled against a config the library was not built with (splanc #468:
+        # mbedtls_ssl_context 344 B vs the library's 552 B). Now the only mbedtls
+        # headers a TU can see are @mbedtls_src's, so anything that includes them
+        # without depending on it fails to compile instead of silently mismatching.
         "sdk/esp32c3/include/mbedtls/esp_crt_bundle/include",
-        "sdk/esp32c3/include/mbedtls/mbedtls/3rdparty/everest/include",
-        "sdk/esp32c3/include/mbedtls/mbedtls/3rdparty/p256-m",
-        "sdk/esp32c3/include/mbedtls/mbedtls/3rdparty/p256-m/p256-m",
         "sdk/esp32c3/include/fatfs/diskio",
         "sdk/esp32c3/include/fatfs/src",
         "sdk/esp32c3/include/fatfs/vfs",

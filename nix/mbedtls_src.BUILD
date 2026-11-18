@@ -20,13 +20,30 @@ _MBEDTLS_COPTS = [
     "-fno-tree-switch-conversion",
     "-std=gnu17",
     "-w",
-    # Config: a thin wrapper (:ledmapper_mbedtls_config) that includes the ESP
-    # port's esp_config.h and then shrinks the TLS record length (see genrule);
-    # enable dynamic buffers. The SDK's sdkconfig.h (on the include path via
+    # Enable dynamic buffers. The SDK's sdkconfig.h (on the include path via
     # @arduino_esp32//:sdk_hdrs) does not define CONFIG_MBEDTLS_DYNAMIC_BUFFER, so
-    # -D here is the only change.
-    "-DMBEDTLS_CONFIG_FILE=\\\"mbedtls/esp_config_ledmapper.h\\\"",
+    # -D here is the only change. (A port knob read only by port/dynamic/*.c: no
+    # public header looks at it, so it stays private.) The config file itself is
+    # _MBEDTLS_DEFINES, which consumers must see too.
     "-DCONFIG_MBEDTLS_DYNAMIC_BUFFER=1",
+]
+
+# The mbedtls config, as `defines` so it PROPAGATES to every consumer, not just
+# copts for this library's own sources. mbedtls struct layouts (ssl_context,
+# ssl_config, sha256_context, ...) depend on the config, and a TU that includes
+# <mbedtls/*.h> without MBEDTLS_CONFIG_FILE falls back to upstream's default
+# mbedtls/mbedtls_config.h — a different config. The prebuilt SDK's define list
+# (sdk/<chip>/flags/defines: -DMBEDTLS_CONFIG_FILE="mbedtls/esp_config.h") is not
+# carried by @arduino_esp32//:sdk_hdrs, so before this every consumer that did not
+# repeat the -D by hand compiled against the default config: the player's netstack
+# transport saw a 344 B mbedtls_ssl_context while this library's is 552 B, and
+# mbedtls_ssl_init overran its g_ssl by 208 B (splanc #444/#468). The mbedtls/
+# headers themselves are byte-identical between the SDK and this source tree; only
+# the config differed. Config: a thin wrapper (:ledmapper_mbedtls_config) that
+# includes the ESP port's esp_config.h and then shrinks the TLS record length (see
+# genrule).
+_MBEDTLS_DEFINES = [
+    "MBEDTLS_CONFIG_FILE=\\\"mbedtls/esp_config_ledmapper.h\\\"",
 ]
 
 # ESP32-C3 (rv32imc — NO atomics, unlike the C6's rv32imac) variant of the copts.
@@ -44,8 +61,12 @@ _MBEDTLS_COPTS_ESP32C3 = [
     if c != "-march=rv32imac_zicsr_zifencei"
 ] + [
     "-march=rv32imc_zicsr_zifencei",
-    "-DLM_MBEDTLS_NO_HW_ECC=1",
 ]
+
+# The c3 variant's config: the same wrapper, plus LM_MBEDTLS_NO_HW_ECC (point 2
+# above). Propagated like _MBEDTLS_DEFINES, so c3 consumers read the config exactly
+# as the c3 library was built.
+_MBEDTLS_DEFINES_ESP32C3 = _MBEDTLS_DEFINES + ["LM_MBEDTLS_NO_HW_ECC=1"]
 
 # mbedtls core (library/*.c) + 3rdparty ECC (everest, p256-m).
 # Everest: compile ONLY the 3 files mbedtls' 3rdparty/everest/CMakeLists.txt
@@ -199,6 +220,7 @@ cc_library(
         "mbedtls/3rdparty/p256-m",
     ],
     copts = _MBEDTLS_COPTS,
+    defines = _MBEDTLS_DEFINES,
     # Our symbols must satisfy the precompiled esp-tls/https_server callers.
     alwayslink = True,
     # esp_* / soc / hal / lwip / freertos headers the port pulls in — PRIVATE so
@@ -240,6 +262,7 @@ cc_library(
         "mbedtls/3rdparty/p256-m",
     ],
     copts = _MBEDTLS_COPTS_ESP32C3,
+    defines = _MBEDTLS_DEFINES_ESP32C3,
     alwayslink = True,
     implementation_deps = ["@arduino_esp32//:sdk_hdrs"],
 )
